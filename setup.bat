@@ -34,6 +34,8 @@ if errorlevel 1 (
 )
 
 echo.
-echo [setup] 완료되었습니다. 이제 아래 명령으로 실행할 수 있습니다:
+echo [setup] 완료되었습니다. GUI 실행:
+echo     run.bat  (더블클릭)
+echo 또는 CLI 모드:
 echo     .venv\Scripts\python.exe imageAlpha.py
 pause

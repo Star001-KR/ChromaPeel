@@ -54,7 +54,7 @@ def remove_color(input_path, output_path, target_color, tolerance=30, feather=0,
     result.save(output_path, "PNG")
     print(f"저장 완료: {output_path}")
 
-def process_folder(input_dir, output_dir, target_color, tolerance=30, feather=0, decontaminate=True, edge_erosion=0):
+def process_folder(input_dir, output_dir, target_color, tolerance=30, feather=0, decontaminate=True, edge_erosion=0, progress_callback=None):
     """
     input_dir 내 모든 PNG 이미지에 알파 처리를 적용해 output_dir에 저장합니다.
 
@@ -65,6 +65,7 @@ def process_folder(input_dir, output_dir, target_color, tolerance=30, feather=0,
     :param feather: 반투명 페이드 범위
     :param decontaminate: 엣지 색상 프린지 제거 여부
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
+    :param progress_callback: 각 파일 처리 후 호출되는 함수. 시그니처: (index, total, input_path, output_path)
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -87,14 +88,17 @@ def process_folder(input_dir, output_dir, target_color, tolerance=30, feather=0,
         out_file = output_path / file.name
         print(f"[{i}/{total}] 처리 중: {file.name}")
         remove_color(str(file), str(out_file), target_color, tolerance, feather, decontaminate, edge_erosion)
+        if progress_callback is not None:
+            progress_callback(i, total, str(file), str(out_file))
 
 
-process_folder(
-    input_dir="base",
-    output_dir="alpha",
-    target_color=(255, 37, 255),
-    tolerance=20,
-    feather=100,
-    decontaminate=True,
-    edge_erosion=1,
-)
+if __name__ == "__main__":
+    process_folder(
+        input_dir="base",
+        output_dir="alpha",
+        target_color=(255, 37, 255),
+        tolerance=20,
+        feather=100,
+        decontaminate=True,
+        edge_erosion=1,
+    )
