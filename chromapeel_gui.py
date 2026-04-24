@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ctypes
+import io
 import os
 import shutil
 import threading
 import tkinter as tk
+from ctypes import wintypes
 from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
 
@@ -24,13 +27,86 @@ BASE_DIR = Path("base")
 ALPHA_DIR = Path("alpha")
 
 
-class ThumbnailView(ttk.Frame):
-    """Scrollable grid of image thumbnails. Optional drag-out support."""
+def copy_image_to_clipboard(path: Path) -> None:
+    """Copy image file at ``path`` to the Windows clipboard.
 
-    def __init__(self, parent, drag_out: bool = False, columns: int = 4, **kwargs):
+    Sets both ``CF_DIB`` (flattened RGB on white — best compatibility with
+    Paint, Word, chat apps) and the registered ``"PNG"`` clipboard format
+    (alpha preserved — for Photoshop/GIMP/etc.). Raises on failure.
+    """
+    img = Image.open(path)
+
+    # CF_DIB (RGB with alpha composited on white for wide compatibility)
+    flat = Image.new("RGB", img.size, (255, 255, 255))
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        rgba = img.convert("RGBA")
+        flat.paste(rgba, mask=rgba.split()[3])
+    else:
+        flat.paste(img.convert("RGB"))
+    bmp_buf = io.BytesIO()
+    flat.save(bmp_buf, "BMP")
+    dib_data = bmp_buf.getvalue()[14:]  # strip 14-byte BMP file header
+
+    # PNG (alpha preserved)
+    png_buf = io.BytesIO()
+    img.save(png_buf, "PNG")
+    png_data = png_buf.getvalue()
+
+    CF_DIB = 8
+    GMEM_MOVEABLE = 0x0002
+
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
+    user32.RegisterClipboardFormatW.restype = wintypes.UINT
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
+
+    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+    def _alloc_and_write(data: bytes) -> wintypes.HGLOBAL:
+        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+        if not handle:
+            raise OSError("GlobalAlloc 실패")
+        ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            raise OSError("GlobalLock 실패")
+        ctypes.memmove(ptr, data, len(data))
+        kernel32.GlobalUnlock(handle)
+        return handle
+
+    png_format = user32.RegisterClipboardFormatW("PNG")
+
+    if not user32.OpenClipboard(None):
+        raise OSError("클립보드를 열 수 없습니다")
+    try:
+        user32.EmptyClipboard()
+        user32.SetClipboardData(CF_DIB, _alloc_and_write(dib_data))
+        if png_format:
+            user32.SetClipboardData(png_format, _alloc_and_write(png_data))
+    finally:
+        user32.CloseClipboard()
+
+
+class ThumbnailView(ttk.Frame):
+    """Scrollable grid of image thumbnails. Optional drag-out and right-click menu support."""
+
+    def __init__(self, parent, drag_out: bool = False, columns: int = 4,
+                 on_right_click=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.drag_out = drag_out
         self.columns = columns
+        self.on_right_click = on_right_click
 
         self.canvas = tk.Canvas(self, highlightthickness=0, background="#fafafa")
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
@@ -118,6 +194,13 @@ class ThumbnailView(ttk.Frame):
             image_label.dnd_bind("<<DragInitCmd>>", lambda e, p=abs_path: ("copy", DND_FILES, (p,)))
             image_label.configure(cursor="hand2")
 
+        if self.on_right_click is not None:
+            resolved = path.resolve()
+            image_label.bind(
+                "<Button-3>",
+                lambda e, p=resolved: self.on_right_click(p, e.x_root, e.y_root),
+            )
+
 
 class ChromaPeelApp:
     def __init__(self):
@@ -152,18 +235,24 @@ class ChromaPeelApp:
         panels.columnconfigure(1, weight=1)
         panels.rowconfigure(0, weight=1)
 
-        input_lf = ttk.Labelframe(panels, text=" 입력 — PNG를 여기로 드래그 ")
+        input_lf = ttk.Labelframe(panels, text=" 입력 — 드래그로 등록 · 우클릭으로 복사/제거 ")
         input_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        self.input_view = ThumbnailView(input_lf, drag_out=False)
+        self.input_view = ThumbnailView(
+            input_lf, drag_out=False,
+            on_right_click=self._show_input_context_menu,
+        )
         self.input_view.pack(fill="both", expand=True, padx=4, pady=4)
         self.input_view.show_placeholder("여기에 PNG 파일을 드래그하세요")
         for w in [input_lf, self.input_view, *self.input_view.drop_targets()]:
             w.drop_target_register(DND_FILES)
             w.dnd_bind("<<Drop>>", self._on_drop)
 
-        output_lf = ttk.Labelframe(panels, text=" 결과 — 썸네일을 탐색기로 드래그하여 가져가기 ")
+        output_lf = ttk.Labelframe(panels, text=" 결과 — 드래그로 가져가기 · 우클릭으로 복사 ")
         output_lf.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
-        self.output_view = ThumbnailView(output_lf, drag_out=True)
+        self.output_view = ThumbnailView(
+            output_lf, drag_out=True,
+            on_right_click=self._show_output_context_menu,
+        )
         self.output_view.pack(fill="both", expand=True, padx=4, pady=4)
 
         btnrow = ttk.Frame(root, padding=(10, 4))
@@ -332,6 +421,75 @@ class ChromaPeelApp:
             os.startfile(str(ALPHA_DIR.resolve()))
         except AttributeError:
             messagebox.showinfo("안내", f"결과 폴더: {ALPHA_DIR.resolve()}")
+        except Exception as e:
+            messagebox.showerror("오류", str(e))
+
+    def _build_context_menu(self, path: Path, include_remove_input: bool = False) -> tk.Menu:
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(
+            label="이미지 클립보드에 복사",
+            command=lambda p=path: self._copy_image(p),
+        )
+        menu.add_command(
+            label="파일 경로 복사",
+            command=lambda p=path: self._copy_path(p),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="탐색기에서 보기",
+            command=lambda p=path: self._reveal_in_explorer(p),
+        )
+        if include_remove_input:
+            menu.add_separator()
+            menu.add_command(
+                label="이 입력 제거",
+                command=lambda p=path: self._remove_input(p),
+                state="disabled" if self.processing else "normal",
+            )
+        return menu
+
+    def _show_output_context_menu(self, path: Path, x_root: int, y_root: int):
+        menu = self._build_context_menu(path)
+        try:
+            menu.tk_popup(x_root, y_root)
+        finally:
+            menu.grab_release()
+
+    def _show_input_context_menu(self, path: Path, x_root: int, y_root: int):
+        menu = self._build_context_menu(path, include_remove_input=True)
+        try:
+            menu.tk_popup(x_root, y_root)
+        finally:
+            menu.grab_release()
+
+    def _remove_input(self, path: Path):
+        if self.processing:
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except Exception as e:
+            messagebox.showerror("제거 실패", str(e))
+            return
+        self._refresh_inputs_from_disk()
+        self._set_status(f"입력 제거: {path.name}")
+
+    def _copy_image(self, path: Path):
+        try:
+            copy_image_to_clipboard(path)
+            self._set_status(f"이미지 클립보드에 복사됨: {path.name}")
+        except Exception as e:
+            self._set_status(f"클립보드 복사 실패: {e}")
+            messagebox.showerror("클립보드 복사 실패", str(e))
+
+    def _copy_path(self, path: Path):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(str(path))
+        self.root.update()
+        self._set_status(f"경로 복사됨: {path}")
+
+    def _reveal_in_explorer(self, path: Path):
+        try:
+            os.system(f'explorer /select,"{path}"')
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
