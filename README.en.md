@@ -18,6 +18,8 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 ## Features
 
 - **Drag-and-drop GUI** — drag PNGs into the window to register them, click the button to convert, then drag the result thumbnails out to Explorer
+- **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / (input only) remove
+- **Background auto-detection (optional)** — one checkbox detects the background color from each image's border, so batches with mixed backgrounds work in a single pass
 - Converts a target color to alpha (chroma key removal)
 - **Feather gradient** — soft fade on edge pixels
 - **Color Decontamination** — removes background-color tint from semi-transparent pixels
@@ -53,7 +55,9 @@ Double-click `run.bat` to launch the GUI.
 2. Click the **[Convert]** button in the middle.
 3. Drag the thumbnails that appear in the right **result panel** out to Explorer / desktop to take them.
 
-Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, and decontaminate from the GUI. Use "Reset to Defaults" to restore factory values at any time.
+**Thumbnail actions**: double-click to open in your default image viewer; right-click for a menu with copy image to clipboard · copy file path · reveal in Explorer · (input panel only) remove this input.
+
+Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, and decontaminate from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Use "Reset to Defaults" to restore factory values at any time.
 
 > Internally, inputs are staged in `base/` and outputs are saved to `alpha/`. The "Open Result Folder" button opens `alpha/` in Explorer.
 
@@ -76,7 +80,7 @@ Adjust via the advanced settings toggle in GUI mode, or via the `process_folder(
 |-----------|-------------|---------|
 | `input_dir` | Input folder | `"base"` |
 | `output_dir` | Output folder | `"alpha"` |
-| `target_color` | Color to remove (R, G, B) | `(255, 37, 255)` (magenta) |
+| `target_color` | Color to remove (R, G, B). Pass `None` to auto-detect the most common color on each image's border | `(255, 37, 255)` (magenta) |
 | `tolerance` | Tolerance for full transparency | `20` |
 | `feather` | Semi-transparent fade range | `100` |
 | `decontaminate` | Remove background-color tint | `True` |
@@ -84,12 +88,13 @@ Adjust via the advanced settings toggle in GUI mode, or via the `process_folder(
 
 ## How it works
 
-1. **Distance calculation** — L∞ distance (per-channel max difference) between each pixel color and the target color
-2. **Full transparency** — sets alpha to 0 where distance ≤ `tolerance`
-3. **Feather fade** — sets alpha as a linear gradient across distance `tolerance`..`tolerance+feather`
-4. **Decontamination** — removes target-color component from semi-transparent pixels by inverting the blend formula
+1. **(Optional) Auto-detect** — if `target_color=None`, picks the most frequent RGB on the image's 1-pixel border as the target
+2. **Distance calculation** — L∞ distance (per-channel max difference) between each pixel color and the target color
+3. **Full transparency** — sets alpha to 0 where distance ≤ `tolerance`
+4. **Feather fade** — sets alpha as a linear gradient across distance `tolerance`..`tolerance+feather`
+5. **Decontamination** — removes target-color component from semi-transparent pixels by inverting the blend formula
    - `observed = t·target + (1-t)·original` → `original = (observed - t·target) / (1-t)`
-5. **Edge Erosion** — erodes N pixels of opaque area adjacent to transparent regions using a 3×3 min filter
+6. **Edge Erosion** — erodes N pixels of opaque area adjacent to transparent regions using a 3×3 min filter
 
 ## Project structure
 
@@ -99,6 +104,7 @@ ChromaPeel/
 ├── base/               # Input folder (auto-staged on GUI drop)
 ├── alpha/              # Output folder
 ├── chromapeel_gui.py   # GUI entry (Tkinter + tkinterdnd2)
+├── clipboard_utils.py  # Windows clipboard image copy (ctypes)
 ├── imageAlpha.py       # Processing logic (also runs in CLI mode)
 ├── requirements.txt    # Python dependencies
 ├── setup.bat           # Windows auto-install script
