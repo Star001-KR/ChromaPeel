@@ -1,8 +1,21 @@
 from PIL import Image
 import numpy as np
 from pathlib import Path
+from typing import Callable, Optional, Tuple
 
-def remove_color(input_path, output_path, target_color, tolerance=30, feather=0, decontaminate=True, edge_erosion=0):
+RGB = Tuple[int, int, int]
+ProgressCallback = Callable[[int, int, str, str], None]
+
+
+def remove_color(
+    input_path: str,
+    output_path: str,
+    target_color: RGB,
+    tolerance: int = 30,
+    feather: int = 0,
+    decontaminate: bool = True,
+    edge_erosion: int = 0,
+) -> None:
     """
     특정 색상을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 지원.
 
@@ -54,7 +67,16 @@ def remove_color(input_path, output_path, target_color, tolerance=30, feather=0,
     result.save(output_path, "PNG")
     print(f"저장 완료: {output_path}")
 
-def process_folder(input_dir, output_dir, target_color, tolerance=30, feather=0, decontaminate=True, edge_erosion=0, progress_callback=None):
+def process_folder(
+    input_dir: str,
+    output_dir: str,
+    target_color: RGB,
+    tolerance: int = 30,
+    feather: int = 0,
+    decontaminate: bool = True,
+    edge_erosion: int = 0,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> None:
     """
     input_dir 내 모든 PNG 이미지에 알파 처리를 적용해 output_dir에 저장합니다.
 

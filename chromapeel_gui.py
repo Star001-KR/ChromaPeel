@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import ctypes
-import io
 import os
 import shutil
 import threading
 import tkinter as tk
-from ctypes import wintypes
 from pathlib import Path
 from tkinter import colorchooser, messagebox, ttk
 
@@ -14,6 +11,7 @@ from PIL import Image, ImageTk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import imageAlpha
+from clipboard_utils import copy_image_to_clipboard
 
 DEFAULT_TARGET_COLOR = (255, 37, 255)
 DEFAULT_TOLERANCE = 20
@@ -27,86 +25,16 @@ BASE_DIR = Path("base")
 ALPHA_DIR = Path("alpha")
 
 
-def copy_image_to_clipboard(path: Path) -> None:
-    """Copy image file at ``path`` to the Windows clipboard.
-
-    Sets both ``CF_DIB`` (flattened RGB on white — best compatibility with
-    Paint, Word, chat apps) and the registered ``"PNG"`` clipboard format
-    (alpha preserved — for Photoshop/GIMP/etc.). Raises on failure.
-    """
-    img = Image.open(path)
-
-    # CF_DIB (RGB with alpha composited on white for wide compatibility)
-    flat = Image.new("RGB", img.size, (255, 255, 255))
-    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-        rgba = img.convert("RGBA")
-        flat.paste(rgba, mask=rgba.split()[3])
-    else:
-        flat.paste(img.convert("RGB"))
-    bmp_buf = io.BytesIO()
-    flat.save(bmp_buf, "BMP")
-    dib_data = bmp_buf.getvalue()[14:]  # strip 14-byte BMP file header
-
-    # PNG (alpha preserved)
-    png_buf = io.BytesIO()
-    img.save(png_buf, "PNG")
-    png_data = png_buf.getvalue()
-
-    CF_DIB = 8
-    GMEM_MOVEABLE = 0x0002
-
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-
-    user32.RegisterClipboardFormatW.argtypes = [wintypes.LPCWSTR]
-    user32.RegisterClipboardFormatW.restype = wintypes.UINT
-    user32.OpenClipboard.argtypes = [wintypes.HWND]
-    user32.OpenClipboard.restype = wintypes.BOOL
-    user32.EmptyClipboard.restype = wintypes.BOOL
-    user32.CloseClipboard.restype = wintypes.BOOL
-    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
-    user32.SetClipboardData.restype = wintypes.HANDLE
-
-    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
-    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
-    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalLock.restype = wintypes.LPVOID
-    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalUnlock.restype = wintypes.BOOL
-
-    def _alloc_and_write(data: bytes) -> wintypes.HGLOBAL:
-        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
-        if not handle:
-            raise OSError("GlobalAlloc 실패")
-        ptr = kernel32.GlobalLock(handle)
-        if not ptr:
-            raise OSError("GlobalLock 실패")
-        ctypes.memmove(ptr, data, len(data))
-        kernel32.GlobalUnlock(handle)
-        return handle
-
-    png_format = user32.RegisterClipboardFormatW("PNG")
-
-    if not user32.OpenClipboard(None):
-        raise OSError("클립보드를 열 수 없습니다")
-    try:
-        user32.EmptyClipboard()
-        user32.SetClipboardData(CF_DIB, _alloc_and_write(dib_data))
-        if png_format:
-            user32.SetClipboardData(png_format, _alloc_and_write(png_data))
-    finally:
-        user32.CloseClipboard()
-
-
 class ThumbnailView(ttk.Frame):
     """Scrollable grid of image thumbnails. Optional drag-out and right-click menu support."""
 
     def __init__(self, parent, drag_out: bool = False, columns: int = 4,
-                 on_right_click=None, **kwargs):
+                 on_right_click=None, on_double_click=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.drag_out = drag_out
         self.columns = columns
         self.on_right_click = on_right_click
+        self.on_double_click = on_double_click
 
         self.canvas = tk.Canvas(self, highlightthickness=0, background="#fafafa")
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
@@ -201,6 +129,13 @@ class ThumbnailView(ttk.Frame):
                 lambda e, p=resolved: self.on_right_click(p, e.x_root, e.y_root),
             )
 
+        if self.on_double_click is not None:
+            resolved = path.resolve()
+            image_label.bind(
+                "<Double-Button-1>",
+                lambda e, p=resolved: self.on_double_click(p),
+            )
+
 
 class ChromaPeelApp:
     def __init__(self):
@@ -239,7 +174,8 @@ class ChromaPeelApp:
         input_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
         self.input_view = ThumbnailView(
             input_lf, drag_out=False,
-            on_right_click=self._show_input_context_menu,
+            on_right_click=lambda p, x, y: self._show_context_menu(p, x, y, include_remove_input=True),
+            on_double_click=self._open_file,
         )
         self.input_view.pack(fill="both", expand=True, padx=4, pady=4)
         self.input_view.show_placeholder("여기에 PNG 파일을 드래그하세요")
@@ -251,7 +187,8 @@ class ChromaPeelApp:
         output_lf.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         self.output_view = ThumbnailView(
             output_lf, drag_out=True,
-            on_right_click=self._show_output_context_menu,
+            on_right_click=lambda p, x, y: self._show_context_menu(p, x, y, include_remove_input=False),
+            on_double_click=self._open_file,
         )
         self.output_view.pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -288,19 +225,8 @@ class ChromaPeelApp:
         self.color_label.pack(side="left", padx=4)
         ttk.Button(color_row, text="색상 선택", command=self._pick_color).pack(side="left", padx=4)
 
-        tol_row = ttk.Frame(parent)
-        tol_row.pack(fill="x", pady=3)
-        ttk.Label(tol_row, text="Tolerance:", width=14).pack(side="left")
-        ttk.Scale(tol_row, from_=0, to=255, variable=self.tolerance,
-                  command=lambda v: self.tolerance.set(int(float(v)))).pack(side="left", fill="x", expand=True, padx=4)
-        ttk.Label(tol_row, textvariable=self.tolerance, width=4).pack(side="left")
-
-        fea_row = ttk.Frame(parent)
-        fea_row.pack(fill="x", pady=3)
-        ttk.Label(fea_row, text="Feather:", width=14).pack(side="left")
-        ttk.Scale(fea_row, from_=0, to=300, variable=self.feather,
-                  command=lambda v: self.feather.set(int(float(v)))).pack(side="left", fill="x", expand=True, padx=4)
-        ttk.Label(fea_row, textvariable=self.feather, width=4).pack(side="left")
+        self._build_scale_row(parent, "Tolerance:", self.tolerance, 0, 255)
+        self._build_scale_row(parent, "Feather:", self.feather, 0, 300)
 
         edge_row = ttk.Frame(parent)
         edge_row.pack(fill="x", pady=3)
@@ -308,6 +234,17 @@ class ChromaPeelApp:
         ttk.Spinbox(edge_row, from_=0, to=10, textvariable=self.edge_erosion, width=5).pack(side="left", padx=4)
         ttk.Checkbutton(edge_row, text="Decontaminate", variable=self.decontaminate).pack(side="left", padx=16)
         ttk.Button(edge_row, text="기본값 복원", command=self._reset_defaults).pack(side="right")
+
+    def _build_scale_row(self, parent, label_text: str, variable: tk.IntVar,
+                         from_: int, to_: int) -> None:
+        row = ttk.Frame(parent)
+        row.pack(fill="x", pady=3)
+        ttk.Label(row, text=label_text, width=14).pack(side="left")
+        ttk.Scale(
+            row, from_=from_, to=to_, variable=variable,
+            command=lambda v: variable.set(int(float(v))),
+        ).pack(side="left", fill="x", expand=True, padx=4)
+        ttk.Label(row, textvariable=variable, width=4).pack(side="left")
 
     def _toggle_advanced(self):
         if self.advanced_visible:
@@ -381,23 +318,23 @@ class ChromaPeelApp:
             parts.append(f"{len(skipped)}개 건너뜀")
         self._set_status(" · ".join(parts) if parts else "드롭된 파일이 없습니다")
 
-    def _refresh_inputs_from_disk(self):
-        files = self._list_pngs(BASE_DIR)
-        self.input_view.clear()
+    def _refresh_view(self, view: ThumbnailView, folder: Path,
+                      placeholder: str) -> None:
+        files = self._list_pngs(folder)
+        view.clear()
         if not files:
-            self.input_view.show_placeholder("여기에 PNG 파일을 드래그하세요")
+            view.show_placeholder(placeholder)
         else:
             for f in files:
-                self.input_view.add_thumbnail(f)
+                view.add_thumbnail(f)
 
-    def _refresh_outputs_from_disk(self):
-        files = self._list_pngs(ALPHA_DIR)
-        self.output_view.clear()
-        if not files:
-            self.output_view.show_placeholder("변환 후 여기에 결과가 표시됩니다")
-        else:
-            for f in files:
-                self.output_view.add_thumbnail(f)
+    def _refresh_inputs_from_disk(self) -> None:
+        self._refresh_view(self.input_view, BASE_DIR,
+                           "여기에 PNG 파일을 드래그하세요")
+
+    def _refresh_outputs_from_disk(self) -> None:
+        self._refresh_view(self.output_view, ALPHA_DIR,
+                           "변환 후 여기에 결과가 표시됩니다")
 
     @staticmethod
     def _list_pngs(folder: Path) -> list[Path]:
@@ -421,6 +358,14 @@ class ChromaPeelApp:
             os.startfile(str(ALPHA_DIR.resolve()))
         except AttributeError:
             messagebox.showinfo("안내", f"결과 폴더: {ALPHA_DIR.resolve()}")
+        except Exception as e:
+            messagebox.showerror("오류", str(e))
+
+    def _open_file(self, path: Path) -> None:
+        try:
+            os.startfile(str(path))
+        except AttributeError:
+            messagebox.showinfo("안내", f"파일 경로: {path}")
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
@@ -448,15 +393,9 @@ class ChromaPeelApp:
             )
         return menu
 
-    def _show_output_context_menu(self, path: Path, x_root: int, y_root: int):
-        menu = self._build_context_menu(path)
-        try:
-            menu.tk_popup(x_root, y_root)
-        finally:
-            menu.grab_release()
-
-    def _show_input_context_menu(self, path: Path, x_root: int, y_root: int):
-        menu = self._build_context_menu(path, include_remove_input=True)
+    def _show_context_menu(self, path: Path, x_root: int, y_root: int,
+                           include_remove_input: bool) -> None:
+        menu = self._build_context_menu(path, include_remove_input=include_remove_input)
         try:
             menu.tk_popup(x_root, y_root)
         finally:
