@@ -7,10 +7,27 @@ RGB = Tuple[int, int, int]
 ProgressCallback = Callable[[int, int, str, str], None]
 
 
+def detect_background_color(data: np.ndarray) -> RGB:
+    """이미지의 1픽셀 테두리에서 최빈 RGB 색상을 반환합니다.
+
+    :param data: (H, W, 3+) 형태의 RGB 또는 RGBA 배열 (uint8 또는 float)
+    """
+    rgb = data[..., :3].astype(np.uint8)
+    border = np.concatenate([
+        rgb[0, :, :],
+        rgb[-1, :, :],
+        rgb[:, 0, :],
+        rgb[:, -1, :],
+    ])
+    colors, counts = np.unique(border, axis=0, return_counts=True)
+    best = colors[counts.argmax()]
+    return (int(best[0]), int(best[1]), int(best[2]))
+
+
 def remove_color(
     input_path: str,
     output_path: str,
-    target_color: RGB,
+    target_color: Optional[RGB],
     tolerance: int = 30,
     feather: int = 0,
     decontaminate: bool = True,
@@ -21,7 +38,7 @@ def remove_color(
 
     :param input_path: 입력 이미지 경로
     :param output_path: 출력 이미지 경로 (PNG 권장)
-    :param target_color: 제거할 색상 (R, G, B) 튜플. 예: (255, 255, 255) = 흰색
+    :param target_color: 제거할 색상 (R, G, B) 튜플. 예: (255, 255, 255) = 흰색. None이면 이미지 테두리에서 자동 감지
     :param tolerance: 완전 투명으로 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위. tolerance~(tolerance+feather) 구간은 선형 그라데이션으로 알파 적용
     :param decontaminate: True면 반투명 엣지 픽셀에서 타겟 색상 성분을 빼서 핑크/컬러 프린지 제거
@@ -29,6 +46,9 @@ def remove_color(
     """
     img = Image.open(input_path).convert("RGBA")
     data = np.array(img).astype(np.float32)
+
+    if target_color is None:
+        target_color = detect_background_color(data)
 
     r, g, b, a = data[..., 0], data[..., 1], data[..., 2], data[..., 3]
     tr, tg, tb = target_color
@@ -70,7 +90,7 @@ def remove_color(
 def process_folder(
     input_dir: str,
     output_dir: str,
-    target_color: RGB,
+    target_color: Optional[RGB],
     tolerance: int = 30,
     feather: int = 0,
     decontaminate: bool = True,
@@ -82,7 +102,7 @@ def process_folder(
 
     :param input_dir: 입력 폴더 경로
     :param output_dir: 출력 폴더 경로 (없으면 자동 생성)
-    :param target_color: 제거할 색상 (R, G, B) 튜플
+    :param target_color: 제거할 색상 (R, G, B) 튜플. None이면 파일별로 테두리 기반 자동 감지
     :param tolerance: 완전 투명 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위
     :param decontaminate: 엣지 색상 프린지 제거 여부

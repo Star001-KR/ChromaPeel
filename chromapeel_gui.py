@@ -18,6 +18,7 @@ DEFAULT_TOLERANCE = 20
 DEFAULT_FEATHER = 100
 DEFAULT_DECONTAMINATE = True
 DEFAULT_EDGE_EROSION = 1
+DEFAULT_AUTO_DETECT_BG = False
 
 THUMB_SIZE = 96
 
@@ -152,6 +153,7 @@ class ChromaPeelApp:
         self.feather = tk.IntVar(value=DEFAULT_FEATHER)
         self.decontaminate = tk.BooleanVar(value=DEFAULT_DECONTAMINATE)
         self.edge_erosion = tk.IntVar(value=DEFAULT_EDGE_EROSION)
+        self.auto_detect_bg = tk.BooleanVar(value=DEFAULT_AUTO_DETECT_BG)
 
         self.advanced_visible = False
         self.processing = False
@@ -208,6 +210,7 @@ class ChromaPeelApp:
 
         self.advanced = ttk.Labelframe(root, text=" 파라미터 ", padding=10)
         self._build_advanced(self.advanced)
+        self._update_color_ui_state()
 
         self.status_sep = ttk.Separator(root, orient="horizontal")
         self.status_sep.pack(fill="x", side="bottom", before=toggle_row)
@@ -223,7 +226,13 @@ class ChromaPeelApp:
         self.color_swatch.pack(side="left", padx=4)
         self.color_label = ttk.Label(color_row, text=str(self.target_color))
         self.color_label.pack(side="left", padx=4)
-        ttk.Button(color_row, text="색상 선택", command=self._pick_color).pack(side="left", padx=4)
+        self.pick_color_btn = ttk.Button(color_row, text="색상 선택", command=self._pick_color)
+        self.pick_color_btn.pack(side="left", padx=4)
+        ttk.Checkbutton(
+            color_row, text="자동 감지",
+            variable=self.auto_detect_bg,
+            command=self._update_color_ui_state,
+        ).pack(side="left", padx=12)
 
         self._build_scale_row(parent, "Tolerance:", self.tolerance, 0, 255)
         self._build_scale_row(parent, "Feather:", self.feather, 0, 300)
@@ -268,14 +277,24 @@ class ChromaPeelApp:
         self.color_swatch.configure(bg=self._rgb_to_hex(rgb))
         self.color_label.configure(text=str(rgb))
 
+    def _update_color_ui_state(self) -> None:
+        if self.auto_detect_bg.get():
+            self.color_swatch.configure(bg="#d0d0d0")
+            self.color_label.configure(text="(파일별 자동)")
+            self.pick_color_btn.configure(state="disabled")
+        else:
+            self.color_swatch.configure(bg=self._rgb_to_hex(self.target_color))
+            self.color_label.configure(text=str(self.target_color))
+            self.pick_color_btn.configure(state="normal")
+
     def _reset_defaults(self):
         self.target_color = DEFAULT_TARGET_COLOR
         self.tolerance.set(DEFAULT_TOLERANCE)
         self.feather.set(DEFAULT_FEATHER)
         self.decontaminate.set(DEFAULT_DECONTAMINATE)
         self.edge_erosion.set(DEFAULT_EDGE_EROSION)
-        self.color_swatch.configure(bg=self._rgb_to_hex(self.target_color))
-        self.color_label.configure(text=str(self.target_color))
+        self.auto_detect_bg.set(DEFAULT_AUTO_DETECT_BG)
+        self._update_color_ui_state()
         self._set_status("기본값으로 복원")
 
     @staticmethod
@@ -448,7 +467,7 @@ class ChromaPeelApp:
         self._set_status(f"0/{len(inputs)} 변환 시작...")
 
         params = {
-            "target_color": self.target_color,
+            "target_color": None if self.auto_detect_bg.get() else self.target_color,
             "tolerance": int(self.tolerance.get()),
             "feather": int(self.feather.get()),
             "decontaminate": bool(self.decontaminate.get()),
