@@ -227,6 +227,11 @@ class ChromaPeelApp:
         self.btn_convert = ttk.Button(btnrow, text="   변환   ", command=self._start_conversion)
         self.btn_convert.pack()
 
+        progress_row = ttk.Frame(root, padding=(10, 0))
+        progress_row.pack(fill="x")
+        self.progress = ttk.Progressbar(progress_row, mode="determinate", maximum=1)
+        self.progress.pack(fill="x")
+
         toggle_row = ttk.Frame(root, padding=(10, 2))
         toggle_row.pack(fill="x")
         self.btn_toggle = ttk.Button(toggle_row, text="▸ 고급 설정", command=self._toggle_advanced, width=14)
@@ -484,6 +489,7 @@ class ChromaPeelApp:
         self.btn_clear.configure(state="disabled")
         self.output_view.clear()
         self.output_view.show_placeholder("변환 중...")
+        self.progress.configure(maximum=len(inputs), value=0)
         self._set_status(f"0/{len(inputs)} 변환 시작...")
 
         params = {
@@ -505,6 +511,7 @@ class ChromaPeelApp:
                     self.output_view.clear()
                     first_done[0] = True
                 self.output_view.add_thumbnail(Path(out_path))
+                self.progress.configure(value=i)
                 self._set_status(f"{i}/{total} 완료 — {Path(in_path).name}")
             self.root.after(0, ui_update)
 
@@ -525,10 +532,12 @@ class ChromaPeelApp:
         self.btn_convert.configure(state="normal", text="   변환   ")
         self.btn_clear.configure(state="normal")
         if error is not None:
+            self.progress.configure(value=0)
             self._set_status(f"오류: {error}")
             messagebox.showerror("변환 실패", str(error))
             self._refresh_outputs_from_disk()
         else:
+            self.progress.configure(value=self.progress["maximum"])
             self._set_status("변환 완료 — 결과 썸네일을 탐색기로 드래그하세요")
 
     def _set_status(self, text: str):
