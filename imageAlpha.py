@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 RGB = Tuple[int, int, int]
-ProgressCallback = Callable[[int, int, str, str], None]
+
+# (index, total, input_path, output_path or None, error or None)
+# - On success: output_path is set, error is None.
+# - On per-file failure: output_path is None, error holds the exception.
+ProgressCallback = Callable[[int, int, str, Optional[str], Optional[BaseException]], None]
 
 
 def detect_background_color(data: np.ndarray) -> RGB:
@@ -85,7 +89,6 @@ def remove_color(
 
     result = Image.fromarray(np.clip(data, 0, 255).astype(np.uint8))
     result.save(output_path, "PNG")
-    print(f"저장 완료: {output_path}")
 
 def process_folder(
     input_dir: str,
@@ -107,14 +110,15 @@ def process_folder(
     :param feather: 반투명 페이드 범위
     :param decontaminate: 엣지 색상 프린지 제거 여부
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
-    :param progress_callback: 각 파일 처리 후 호출되는 함수. 시그니처: (index, total, input_path, output_path)
+    :param progress_callback: 각 파일 처리 후 호출. 시그니처:
+        (index, total, input_path, output_path or None, error or None).
+        한 파일이 실패해도 다음 파일을 계속 처리합니다.
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
 
     if not input_path.is_dir():
-        print(f"입력 폴더를 찾을 수 없습니다: {input_dir}")
-        return
+        raise FileNotFoundError(f"입력 폴더를 찾을 수 없습니다: {input_dir}")
 
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -122,19 +126,30 @@ def process_folder(
                         if f.is_file() and f.suffix.lower() == ".png"])
 
     if not png_files:
-        print(f"처리할 PNG 파일이 없습니다: {input_dir}")
         return
 
     total = len(png_files)
     for i, file in enumerate(png_files, 1):
         out_file = output_path / file.name
-        print(f"[{i}/{total}] 처리 중: {file.name}")
-        remove_color(str(file), str(out_file), target_color, tolerance, feather, decontaminate, edge_erosion)
+        try:
+            remove_color(str(file), str(out_file), target_color, tolerance,
+                         feather, decontaminate, edge_erosion)
+        except Exception as e:
+            if progress_callback is not None:
+                progress_callback(i, total, str(file), None, e)
+            continue
         if progress_callback is not None:
-            progress_callback(i, total, str(file), str(out_file))
+            progress_callback(i, total, str(file), str(out_file), None)
 
 
 if __name__ == "__main__":
+    def _cli_progress(i, total, in_path, out_path, error):
+        name = Path(in_path).name
+        if error is not None:
+            print(f"[{i}/{total}] 실패: {name} — {error}")
+        else:
+            print(f"[{i}/{total}] 완료: {name}")
+
     process_folder(
         input_dir="base",
         output_dir="alpha",
@@ -143,4 +158,5 @@ if __name__ == "__main__":
         feather=100,
         decontaminate=True,
         edge_erosion=1,
+        progress_callback=_cli_progress,
     )

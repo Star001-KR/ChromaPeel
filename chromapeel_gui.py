@@ -472,6 +472,11 @@ class ChromaPeelApp:
         self._refresh_inputs_from_disk()
         self._set_status(f"입력 제거: {path.name}")
 
+    # Characters Windows forbids in filenames (POSIX is more lenient,
+    # but we keep one rule so behavior matches across platforms and
+    # files stay portable).
+    _ILLEGAL_FILENAME_CHARS = '<>:"/\\|?*'
+
     def _rename_output(self, path: Path):
         if self.processing:
             return
@@ -486,16 +491,28 @@ class ChromaPeelApp:
         new_name = new_name.strip()
         if not new_name:
             return
-        if any(sep in new_name for sep in ("/", "\\")):
-            messagebox.showerror("이름 변경 실패", "파일명에 경로 구분자를 사용할 수 없습니다.")
+        bad = [c for c in new_name if c in self._ILLEGAL_FILENAME_CHARS or ord(c) < 32]
+        if bad:
+            messagebox.showerror(
+                "이름 변경 실패",
+                "파일명에 사용할 수 없는 문자가 포함되어 있습니다: "
+                + " ".join(sorted(set(bad))),
+            )
             return
         if Path(new_name).suffix.lower() != ".png":
             new_name += ".png"
         new_path = path.with_name(new_name)
         if new_path == path:
             return
+        # On case-insensitive filesystems, "IMG.png" → "img.png" refers
+        # to the same file — skip the overwrite confirmation.
+        same_file = False
         if new_path.exists():
-            if not messagebox.askyesno(
+            try:
+                same_file = new_path.samefile(path)
+            except OSError:
+                same_file = False
+            if not same_file and not messagebox.askyesno(
                 "덮어쓰기 확인", f"{new_name} 파일이 이미 있습니다. 덮어쓸까요?"
             ):
                 return
@@ -555,15 +572,22 @@ class ChromaPeelApp:
 
     def _run_process(self, params):
         first_done = [False]
+        failed = [0]
 
-        def cb(i, total, in_path, out_path):
+        def cb(i, total, in_path, out_path, error):
             def ui_update():
                 if not first_done[0]:
                     self.output_view.clear()
                     first_done[0] = True
-                self.output_view.add_thumbnail(Path(out_path))
+                if error is not None:
+                    failed[0] += 1
+                    self._set_status(
+                        f"{i}/{total} 실패 — {Path(in_path).name}: {error}"
+                    )
+                else:
+                    self.output_view.add_thumbnail(Path(out_path))
+                    self._set_status(f"{i}/{total} 완료 — {Path(in_path).name}")
                 self.progress.configure(value=i)
-                self._set_status(f"{i}/{total} 완료 — {Path(in_path).name}")
             self.root.after(0, ui_update)
 
         try:
@@ -573,12 +597,12 @@ class ChromaPeelApp:
                 progress_callback=cb,
                 **params,
             )
-            self.root.after(0, lambda: self._on_done(None))
+            self.root.after(0, lambda: self._on_done(None, failed[0]))
         except Exception as e:
             err = e
-            self.root.after(0, lambda: self._on_done(err))
+            self.root.after(0, lambda: self._on_done(err, failed[0]))
 
-    def _on_done(self, error: Exception | None):
+    def _on_done(self, error: Exception | None, failed: int = 0):
         self.processing = False
         self.btn_convert.configure(state="normal", text="   변환   ")
         self.btn_clear.configure(state="normal")
@@ -589,7 +613,12 @@ class ChromaPeelApp:
             self._refresh_outputs_from_disk()
         else:
             self.progress.configure(value=self.progress["maximum"])
-            self._set_status("변환 완료 — 결과 썸네일을 탐색기로 드래그하세요")
+            if failed:
+                self._set_status(
+                    f"변환 완료 — {failed}개 파일 실패. 결과 썸네일을 탐색기로 드래그하세요"
+                )
+            else:
+                self._set_status("변환 완료 — 결과 썸네일을 탐색기로 드래그하세요")
 
     def _set_status(self, text: str):
         self.status.set(text)

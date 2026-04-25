@@ -19,12 +19,14 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 
 - **Desktop app (Win/Mac/Linux)** + **Web app (mobile / desktop browser)** — pick whichever fits the workflow
 - **Drag-and-drop GUI** — drag PNGs into the window to register them, click the button to convert, then drag the result thumbnails out to Explorer
-- **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / (input only) remove
+- **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / **(output) rename** / (input) remove
+- **Batch progress bar** — tracks N/M progress during multi-file conversion
 - **Background auto-detection (optional)** — one checkbox detects the background color from each image's border, so batches with mixed backgrounds work in a single pass
 - Converts a target color to alpha (chroma key removal)
 - **Feather gradient** — soft fade on edge pixels
 - **Color Decontamination** — removes background-color tint from semi-transparent pixels
 - **Edge Erosion** — fully removes residual fringe
+- **Continue on partial failure** — a single corrupt input no longer aborts the rest of the batch
 - Batch folder processing (CLI mode)
 
 ## Requirements
@@ -63,7 +65,7 @@ Run `run.bat` (Windows) or `./run.sh` (macOS / Linux) to launch the GUI.
 2. Click the **[Convert]** button in the middle.
 3. Drag the thumbnails that appear in the right **result panel** out to Explorer / desktop to take them.
 
-**Thumbnail actions**: double-click to open in your default image viewer; right-click for a menu with copy image to clipboard · copy file path · reveal in Explorer · (input panel only) remove this input.
+**Thumbnail actions**: double-click to open in your default image viewer; right-click for a menu with copy image to clipboard · copy file path · reveal in Explorer · **(output panel) Rename...** · (input panel) remove this input. Rename auto-appends `.png` and rejects characters that are illegal on Windows.
 
 Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, and decontaminate from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Use "Reset to Defaults" to restore factory values at any time.
 
@@ -76,6 +78,8 @@ The static web build under `web/` runs in any modern browser with no install.
 - **Hosted** — pushes to `main` automatically deploy to GitHub Pages at `https://star001-kr.github.io/ChromaPeel/`. Enable *Pages → Source: GitHub Actions* once in repository settings to activate it.
 - **Local** — serve the `web/` folder with any static server, e.g. `python3 -m http.server -d web 8000`, then open `http://localhost:8000`.
 - **Mobile** — pick an image from your camera roll, tune the sliders with live preview, then tap **Save / Share** to push the transparent PNG to Photos, a chat app, etc.
+- **Output filename** — auto-populates as `{stem}_alpha`; freely editable just before save.
+- **Image size cap** — images above ~16 MP (≈ 4096×4096) are rejected to protect mobile memory.
 
 The web version targets single-image editing, and all processing runs locally in the browser — the image is never uploaded.
 
@@ -135,6 +139,10 @@ ChromaPeel/
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
+├── tests/                # pytest suite + JS parity runner
+│   ├── test_image_alpha.py
+│   ├── test_js_parity.py
+│   └── js_parity_runner.js
 ├── .github/workflows/deploy-web.yml  # GitHub Pages auto-deploy
 └── .gitignore
 ```
@@ -147,3 +155,14 @@ ChromaPeel/
 | Thin features (grass blades, stems) disappear | Set `edge_erosion=0` to disable erosion |
 | Sprite's own colors shift | Set `decontaminate=False` to disable decontamination |
 | Background isn't fully removed | Increase `tolerance` |
+
+## Tests
+
+Algorithm unit tests plus a byte-for-byte JS↔Python parity test live under `tests/`.
+
+```bash
+.venv/bin/python -m pytest tests/ -v   # macOS / Linux
+.venv\Scripts\python.exe -m pytest tests/ -v   # Windows
+```
+
+The JS parity test runs only when `node` is available; otherwise it's auto-skipped.

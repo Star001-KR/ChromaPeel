@@ -160,8 +160,16 @@ function syncAutoDetectUI() {
 
 // ---------- File loading ----------
 
+// Above ~16MP, mobile Safari often refuses to allocate the canvas
+// or returns blank data, and processing a copy + erosion buffers
+// would cost ~250MB+. Reject with a clear message instead of OOMing.
+const MAX_PIXELS = 16 * 1024 * 1024;
+
+let loadToken = 0;
+
 function loadFile(file) {
   if (!file) return;
+  const token = ++loadToken;
   state.sourceFilename = file.name || 'image.png';
   const stem = state.sourceFilename.replace(/\.[^./\\]+$/, '') || 'image';
   $('filenameInput').value = `${stem}_alpha`;
@@ -169,12 +177,28 @@ function loadFile(file) {
   const img = new Image();
   img.onload = () => {
     URL.revokeObjectURL(url);
-    const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    state.sourceImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    if (token !== loadToken) return; // a newer load superseded this one
+
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (w * h > MAX_PIXELS) {
+      const mp = (w * h / (1024 * 1024)).toFixed(1);
+      setStatus(`이미지가 너무 큽니다 (${w}×${h}, ${mp}MP). 16MP 이하로 줄여 주세요.`);
+      return;
+    }
+
+    let imageData;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      imageData = ctx.getImageData(0, 0, w, h);
+    } catch (e) {
+      setStatus(`이미지 로드 실패 (${w}×${h}): ${e.message || e}`);
+      return;
+    }
+    state.sourceImageData = imageData;
 
     drawSourcePreview();
     if (state.autoDetect) syncAutoDetectUI();
@@ -182,10 +206,11 @@ function loadFile(file) {
     $('saveBtn').disabled = true;
     schedule();
     $('emptyHint').style.display = 'none';
-    setStatus(`${img.naturalWidth}×${img.naturalHeight} 로드됨`);
+    setStatus(`${w}×${h} 로드됨`);
   };
   img.onerror = () => {
     URL.revokeObjectURL(url);
+    if (token !== loadToken) return;
     setStatus('이미지를 열 수 없습니다');
   };
   img.src = url;
@@ -203,9 +228,15 @@ function drawSourcePreview() {
 
 let scheduleTimer = null;
 let processing = false;
+let dirty = false;
 
 function schedule() {
   if (!state.sourceImageData) return;
+  if (processing) {
+    // Param changed mid-flight; runProcess will reschedule itself once done.
+    dirty = true;
+    return;
+  }
   if (scheduleTimer !== null) clearTimeout(scheduleTimer);
   scheduleTimer = setTimeout(runProcess, 80);
 }
@@ -214,6 +245,7 @@ function runProcess() {
   scheduleTimer = null;
   if (!state.sourceImageData || processing) return;
   processing = true;
+  dirty = false;
   setStatus('처리 중...');
 
   // Yield to the UI before heavy work
@@ -240,6 +272,10 @@ function runProcess() {
       processing = false;
       const dt = Math.round(performance.now() - t0);
       setStatus(`처리 완료 (${dt}ms)`);
+      if (dirty) {
+        dirty = false;
+        schedule();
+      }
     }, 'image/png');
   });
 }

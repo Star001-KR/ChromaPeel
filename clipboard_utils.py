@@ -5,6 +5,7 @@ import io
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from PIL import Image
@@ -98,12 +99,23 @@ def _copy_windows(path: Path) -> None:
 
 
 def _copy_macos(path: Path) -> None:
-    posix = str(path.resolve()).replace('"', '\\"')
-    script = f'set the clipboard to (read (POSIX file "{posix}") as «class PNGf»)'
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True, text=True,
-    )
+    # The original path may contain quotes, backslashes, or AppleScript
+    # metacharacters. Rather than try to escape every edge case, we
+    # stage a symlink with a fixed-shape name in a fresh temp directory
+    # (created by tempfile, so its path is mkstemp-safe) and feed that
+    # to osascript. This makes the script string literal-safe.
+    src = path.resolve()
+    with tempfile.TemporaryDirectory(prefix="chromapeel_clip_") as td:
+        link = Path(td) / "image.png"
+        try:
+            link.symlink_to(src)
+        except OSError:
+            shutil.copyfile(src, link)
+        script = f'set the clipboard to (read (POSIX file "{link}") as «class PNGf»)'
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True,
+        )
     if result.returncode != 0:
         raise OSError(f"osascript 실패: {result.stderr.strip() or result.stdout.strip()}")
 
