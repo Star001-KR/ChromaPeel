@@ -17,6 +17,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 
 ## Features
 
+- **Desktop app (Win/Mac/Linux)** + **Web app (mobile / desktop browser)** — pick whichever fits the workflow
 - **Drag-and-drop GUI** — drag PNGs into the window to register them, click the button to convert, then drag the result thumbnails out to Explorer
 - **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / (input only) remove
 - **Background auto-detection (optional)** — one checkbox detects the background color from each image's border, so batches with mixed backgrounds work in a single pass
@@ -67,6 +68,16 @@ Run `run.bat` (Windows) or `./run.sh` (macOS / Linux) to launch the GUI.
 Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, and decontaminate from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Use "Reset to Defaults" to restore factory values at any time.
 
 > Internally, inputs are staged in `base/` and outputs are saved to `alpha/`. The "Open Result Folder" button opens `alpha/` in Explorer.
+
+### Web / Mobile mode
+
+The static web build under `web/` runs in any modern browser with no install.
+
+- **Hosted** — pushes to `main` automatically deploy to GitHub Pages at `https://star001-kr.github.io/ChromaPeel/`. Enable *Pages → Source: GitHub Actions* once in repository settings to activate it.
+- **Local** — serve the `web/` folder with any static server, e.g. `python3 -m http.server -d web 8000`, then open `http://localhost:8000`.
+- **Mobile** — pick an image from your camera roll, tune the sliders with live preview, then tap **Save / Share** to push the transparent PNG to Photos, a chat app, etc.
+
+The web version targets single-image editing, and all processing runs locally in the browser — the image is never uploaded.
 
 ### CLI mode
 
@@ -120,6 +131,11 @@ ChromaPeel/
 ├── requirements.txt    # Python dependencies
 ├── setup.bat / setup.sh  # Auto-install scripts (Windows / macOS·Linux)
 ├── run.bat / run.sh      # One-click GUI launchers (Windows / macOS·Linux)
+├── web/                  # Mobile / browser web build (vanilla JS + Canvas)
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── .github/workflows/deploy-web.yml  # GitHub Pages auto-deploy
 └── .gitignore
 ```
 

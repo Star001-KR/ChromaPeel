@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a1a1a" />
+  <title>ChromaPeel — 크로마 키 제거</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>ChromaPeel</h1>
+    <span class="subtitle">크로마 키 → 투명 PNG</span>
+  </header>
+
+  <main>
+    <section class="previews" aria-label="미리보기">
+      <figure class="preview">
+        <figcaption>입력</figcaption>
+        <div class="canvas-wrap">
+          <canvas id="sourceCanvas"></canvas>
+          <p id="emptyHint" class="empty-hint">
+            이미지를 선택하거나<br/>여기로 드래그하세요
+          </p>
+        </div>
+      </figure>
+      <figure class="preview">
+        <figcaption>결과 (투명)</figcaption>
+        <div class="canvas-wrap checker">
+          <canvas id="resultCanvas"></canvas>
+        </div>
+      </figure>
+    </section>
+
+    <section class="actions">
+      <label class="file-btn">
+        <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" />
+        <span>이미지 선택</span>
+      </label>
+      <button id="saveBtn" class="primary" disabled>저장 / 공유</button>
+    </section>
+
+    <section class="params" aria-label="파라미터">
+      <div class="row">
+        <label for="colorPicker">대상 색상</label>
+        <input id="colorPicker" type="color" value="#ff25ff" />
+        <span id="colorLabel" class="muted">(255, 37, 255)</span>
+        <label class="check">
+          <input id="autoDetect" type="checkbox" />
+          자동 감지
+        </label>
+      </div>
+
+      <div class="row">
+        <label for="tolerance">Tolerance</label>
+        <input id="tolerance" type="range" min="0" max="255" value="20" />
+        <span id="toleranceVal" class="num">20</span>
+      </div>
+
+      <div class="row">
+        <label for="feather">Feather</label>
+        <input id="feather" type="range" min="0" max="300" value="100" />
+        <span id="featherVal" class="num">100</span>
+      </div>
+
+      <div class="row">
+        <label for="edgeErosion">Edge Erosion</label>
+        <input id="edgeErosion" type="range" min="0" max="10" value="1" />
+        <span id="edgeErosionVal" class="num">1</span>
+      </div>
+
+      <div class="row">
+        <label class="check">
+          <input id="decontaminate" type="checkbox" checked />
+          Decontaminate
+        </label>
+        <button id="resetBtn" class="ghost">기본값 복원</button>
+      </div>
+    </section>
+
+    <p id="status" class="status" role="status"></p>
+  </main>
+
+  <footer>
+    <a href="https://github.com/Star001-KR/ChromaPeel" target="_blank" rel="noopener">GitHub</a>
+    · 데스크톱 Python 앱 + 모바일/웹 버전
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
