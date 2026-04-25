@@ -7,7 +7,7 @@ import sys
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import colorchooser, messagebox, ttk
+from tkinter import colorchooser, messagebox, simpledialog, ttk
 
 from PIL import Image, ImageTk
 from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -200,7 +200,9 @@ class ChromaPeelApp:
         input_lf.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
         self.input_view = ThumbnailView(
             input_lf, drag_out=False,
-            on_right_click=lambda p, x, y: self._show_context_menu(p, x, y, include_remove_input=True),
+            on_right_click=lambda p, x, y: self._show_context_menu(
+                p, x, y, include_remove_input=True, include_rename=False
+            ),
             on_double_click=self._open_file,
         )
         self.input_view.pack(fill="both", expand=True, padx=4, pady=4)
@@ -209,11 +211,13 @@ class ChromaPeelApp:
             w.drop_target_register(DND_FILES)
             w.dnd_bind("<<Drop>>", self._on_drop)
 
-        output_lf = ttk.Labelframe(panels, text=" 결과 — 드래그로 가져가기 · 우클릭으로 복사 ")
+        output_lf = ttk.Labelframe(panels, text=" 결과 — 드래그로 가져가기 · 우클릭으로 복사·이름 변경 ")
         output_lf.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         self.output_view = ThumbnailView(
             output_lf, drag_out=True,
-            on_right_click=lambda p, x, y: self._show_context_menu(p, x, y, include_remove_input=False),
+            on_right_click=lambda p, x, y: self._show_context_menu(
+                p, x, y, include_remove_input=False, include_rename=True
+            ),
             on_double_click=self._open_file,
         )
         self.output_view.pack(fill="both", expand=True, padx=4, pady=4)
@@ -413,7 +417,8 @@ class ChromaPeelApp:
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
-    def _build_context_menu(self, path: Path, include_remove_input: bool = False) -> tk.Menu:
+    def _build_context_menu(self, path: Path, include_remove_input: bool = False,
+                             include_rename: bool = False) -> tk.Menu:
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(
             label="이미지 클립보드에 복사",
@@ -428,6 +433,13 @@ class ChromaPeelApp:
             label="탐색기에서 보기",
             command=lambda p=path: self._reveal_in_explorer(p),
         )
+        if include_rename:
+            menu.add_separator()
+            menu.add_command(
+                label="이름 변경...",
+                command=lambda p=path: self._rename_output(p),
+                state="disabled" if self.processing else "normal",
+            )
         if include_remove_input:
             menu.add_separator()
             menu.add_command(
@@ -438,8 +450,12 @@ class ChromaPeelApp:
         return menu
 
     def _show_context_menu(self, path: Path, x_root: int, y_root: int,
-                           include_remove_input: bool) -> None:
-        menu = self._build_context_menu(path, include_remove_input=include_remove_input)
+                           include_remove_input: bool, include_rename: bool) -> None:
+        menu = self._build_context_menu(
+            path,
+            include_remove_input=include_remove_input,
+            include_rename=include_rename,
+        )
         try:
             menu.tk_popup(x_root, y_root)
         finally:
@@ -455,6 +471,41 @@ class ChromaPeelApp:
             return
         self._refresh_inputs_from_disk()
         self._set_status(f"입력 제거: {path.name}")
+
+    def _rename_output(self, path: Path):
+        if self.processing:
+            return
+        new_name = simpledialog.askstring(
+            "이름 변경",
+            "새 파일명을 입력하세요 (.png 생략 가능)",
+            initialvalue=path.name,
+            parent=self.root,
+        )
+        if new_name is None:
+            return
+        new_name = new_name.strip()
+        if not new_name:
+            return
+        if any(sep in new_name for sep in ("/", "\\")):
+            messagebox.showerror("이름 변경 실패", "파일명에 경로 구분자를 사용할 수 없습니다.")
+            return
+        if Path(new_name).suffix.lower() != ".png":
+            new_name += ".png"
+        new_path = path.with_name(new_name)
+        if new_path == path:
+            return
+        if new_path.exists():
+            if not messagebox.askyesno(
+                "덮어쓰기 확인", f"{new_name} 파일이 이미 있습니다. 덮어쓸까요?"
+            ):
+                return
+        try:
+            path.replace(new_path)
+        except Exception as e:
+            messagebox.showerror("이름 변경 실패", str(e))
+            return
+        self._refresh_outputs_from_disk()
+        self._set_status(f"이름 변경: {path.name} → {new_name}")
 
     def _copy_image(self, path: Path):
         try:

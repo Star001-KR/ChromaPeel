@@ -163,6 +163,47 @@ button.ghost {
   border-style: dashed;
 }
 
+/* Filename */
+.filename {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+}
+.filename label {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: #333;
+}
+.filename-input {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+  min-width: 0;
+}
+.filename-input input {
+  flex: 1 1 auto;
+  border: none;
+  outline: none;
+  font: inherit;
+  padding: 8px 0;
+  min-width: 0;
+  background: transparent;
+}
+.filename-input .ext {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 /* Params */
 .params {
   background: var(--panel);

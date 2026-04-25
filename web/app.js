@@ -163,6 +163,8 @@ function syncAutoDetectUI() {
 function loadFile(file) {
   if (!file) return;
   state.sourceFilename = file.name || 'image.png';
+  const stem = state.sourceFilename.replace(/\.[^./\\]+$/, '') || 'image';
+  $('filenameInput').value = `${stem}_alpha`;
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
@@ -176,8 +178,9 @@ function loadFile(file) {
 
     drawSourcePreview();
     if (state.autoDetect) syncAutoDetectUI();
+    state.processedBlob = null;
+    $('saveBtn').disabled = true;
     schedule();
-    $('saveBtn').disabled = false;
     $('emptyHint').style.display = 'none';
     setStatus(`${img.naturalWidth}×${img.naturalHeight} 로드됨`);
   };
@@ -233,6 +236,7 @@ function runProcess() {
       if (state.processedURL) URL.revokeObjectURL(state.processedURL);
       state.processedBlob = blob;
       state.processedURL = blob ? URL.createObjectURL(blob) : null;
+      $('saveBtn').disabled = !blob;
       processing = false;
       const dt = Math.round(performance.now() - t0);
       setStatus(`처리 완료 (${dt}ms)`);
@@ -242,7 +246,17 @@ function runProcess() {
 
 // ---------- Save / Share ----------
 
+function sanitizeStem(s) {
+  // strip path separators and characters illegal in Windows filenames
+  return s.replace(/[/\\:*?"<>|\x00-\x1f]/g, '').replace(/\.+$/, '').trim();
+}
+
 function outputFilename() {
+  const raw = ($('filenameInput').value || '').trim();
+  if (raw) {
+    const stem = sanitizeStem(raw.replace(/\.png$/i, ''));
+    if (stem) return `${stem}.png`;
+  }
   const name = state.sourceFilename || 'image.png';
   const dot = name.lastIndexOf('.');
   const stem = dot > 0 ? name.slice(0, dot) : name;
