@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -24,6 +26,28 @@ THUMB_SIZE = 96
 
 BASE_DIR = Path("base")
 ALPHA_DIR = Path("alpha")
+
+
+def _open_path(path: Path) -> None:
+    """기본 연결 프로그램으로 파일 또는 폴더 열기 (크로스 플랫폼)."""
+    target = str(path)
+    if sys.platform == "win32":
+        os.startfile(target)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", target], check=False)
+    else:
+        subprocess.run(["xdg-open", target], check=False)
+
+
+def _reveal_path(path: Path) -> None:
+    """파일 관리자에서 해당 파일을 선택해 열기. Linux는 부모 폴더를 엽니다."""
+    target = str(path)
+    if sys.platform == "win32":
+        subprocess.run(["explorer", f"/select,{target}"], check=False)
+    elif sys.platform == "darwin":
+        subprocess.run(["open", "-R", target], check=False)
+    else:
+        subprocess.run(["xdg-open", str(Path(target).parent)], check=False)
 
 
 class ThumbnailView(ttk.Frame):
@@ -374,17 +398,13 @@ class ChromaPeelApp:
 
     def _open_alpha_dir(self):
         try:
-            os.startfile(str(ALPHA_DIR.resolve()))
-        except AttributeError:
-            messagebox.showinfo("안내", f"결과 폴더: {ALPHA_DIR.resolve()}")
+            _open_path(ALPHA_DIR.resolve())
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
     def _open_file(self, path: Path) -> None:
         try:
-            os.startfile(str(path))
-        except AttributeError:
-            messagebox.showinfo("안내", f"파일 경로: {path}")
+            _open_path(path)
         except Exception as e:
             messagebox.showerror("오류", str(e))
 
@@ -447,7 +467,7 @@ class ChromaPeelApp:
 
     def _reveal_in_explorer(self, path: Path):
         try:
-            os.system(f'explorer /select,"{path}"')
+            _reveal_path(path)
         except Exception as e:
             messagebox.showerror("오류", str(e))
 

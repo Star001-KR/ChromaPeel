@@ -30,13 +30,20 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 
 - Python 3.8+
 - Pillow, numpy, tkinterdnd2
+- (Linux only) `xclip` (X11) or `wl-clipboard` (Wayland) for image clipboard copy
 
 ## Installation
 
-On Windows, double-click or run `setup.bat`:
+**Windows**: double-click or run `setup.bat`
+
+```bat
+setup.bat
+```
+
+**macOS / Linux**: run `setup.sh` from a terminal
 
 ```bash
-setup.bat
+./setup.sh
 ```
 
 It automatically:
@@ -49,7 +56,7 @@ It automatically:
 
 ### GUI mode (recommended)
 
-Double-click `run.bat` to launch the GUI.
+Run `run.bat` (Windows) or `./run.sh` (macOS / Linux) to launch the GUI.
 
 1. Drag PNG files into the left **input panel**.
 2. Click the **[Convert]** button in the middle.
@@ -67,7 +74,11 @@ Expanding the "▸ Advanced Settings" toggle lets you adjust target color, toler
 2. Run the script:
 
 ```bash
+# Windows
 .venv\Scripts\python.exe imageAlpha.py
+
+# macOS / Linux
+.venv/bin/python imageAlpha.py
 ```
 
 3. Find the results in the `alpha/` folder.
@@ -104,11 +115,11 @@ ChromaPeel/
 ├── base/               # Input folder (auto-staged on GUI drop)
 ├── alpha/              # Output folder
 ├── chromapeel_gui.py   # GUI entry (Tkinter + tkinterdnd2)
-├── clipboard_utils.py  # Windows clipboard image copy (ctypes)
+├── clipboard_utils.py  # Clipboard image copy (Win ctypes / mac osascript / Linux xclip·wl-copy)
 ├── imageAlpha.py       # Processing logic (also runs in CLI mode)
 ├── requirements.txt    # Python dependencies
-├── setup.bat           # Windows auto-install script
-├── run.bat             # One-click GUI launcher
+├── setup.bat / setup.sh  # Auto-install scripts (Windows / macOS·Linux)
+├── run.bat / run.sh      # One-click GUI launchers (Windows / macOS·Linux)
 └── .gitignore
 ```
 

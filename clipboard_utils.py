@@ -2,19 +2,37 @@ from __future__ import annotations
 
 import ctypes
 import io
-from ctypes import wintypes
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image
 
 
 def copy_image_to_clipboard(path: Path) -> None:
-    """Copy image file at ``path`` to the Windows clipboard.
+    """Copy the image at ``path`` to the system clipboard.
 
-    Sets both ``CF_DIB`` (flattened RGB on white — best compatibility with
-    Paint, Word, chat apps) and the registered ``"PNG"`` clipboard format
-    (alpha preserved — for Photoshop/GIMP/etc.). Raises on failure.
+    Windows uses ``CF_DIB`` (RGB on white) plus the registered ``"PNG"``
+    format (alpha preserved). macOS uses ``osascript`` with ``«class PNGf»``.
+    Linux uses ``wl-copy`` (Wayland) or ``xclip`` (X11) — at least one must
+    be installed. Raises on failure.
     """
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+
+    if sys.platform == "win32":
+        _copy_windows(p)
+    elif sys.platform == "darwin":
+        _copy_macos(p)
+    else:
+        _copy_linux(p)
+
+
+def _copy_windows(path: Path) -> None:
+    from ctypes import wintypes
+
     img = Image.open(path)
 
     # CF_DIB (RGB with alpha composited on white for wide compatibility)
@@ -77,3 +95,36 @@ def copy_image_to_clipboard(path: Path) -> None:
             user32.SetClipboardData(png_format, _alloc_and_write(png_data))
     finally:
         user32.CloseClipboard()
+
+
+def _copy_macos(path: Path) -> None:
+    posix = str(path.resolve()).replace('"', '\\"')
+    script = f'set the clipboard to (read (POSIX file "{posix}") as «class PNGf»)'
+    result = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise OSError(f"osascript 실패: {result.stderr.strip() or result.stdout.strip()}")
+
+
+def _copy_linux(path: Path) -> None:
+    abs_path = str(path.resolve())
+    if shutil.which("wl-copy"):
+        with open(abs_path, "rb") as f:
+            result = subprocess.run(
+                ["wl-copy", "--type", "image/png"],
+                stdin=f, capture_output=True,
+            )
+        if result.returncode != 0:
+            raise OSError(f"wl-copy 실패: {result.stderr.decode(errors='replace').strip()}")
+        return
+    if shutil.which("xclip"):
+        result = subprocess.run(
+            ["xclip", "-selection", "clipboard", "-t", "image/png", "-i", abs_path],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            raise OSError(f"xclip 실패: {result.stderr.decode(errors='replace').strip()}")
+        return
+    raise OSError("이미지 클립보드 복사를 위해 'wl-clipboard' 또는 'xclip' 패키지가 필요합니다")
