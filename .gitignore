@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+build/
+dist/
 
 # Generated output (alpha processed images)
 alpha/*.png

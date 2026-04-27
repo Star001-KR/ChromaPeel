@@ -13,6 +13,7 @@ from PIL import Image, ImageTk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import imageAlpha
+from imageAlpha import __version__
 from clipboard_utils import copy_image_to_clipboard
 
 DEFAULT_TARGET_COLOR = (255, 37, 255)
@@ -165,7 +166,7 @@ class ThumbnailView(ttk.Frame):
 class ChromaPeelApp:
     def __init__(self):
         self.root = TkinterDnD.Tk()
-        self.root.title("ChromaPeel")
+        self.root.title(f"ChromaPeel {__version__}")
         self.root.geometry("940x680")
         self.root.minsize(780, 580)
 
@@ -627,5 +628,9 @@ class ChromaPeelApp:
         self.root.mainloop()
 
 
-if __name__ == "__main__":
+def main() -> None:
     ChromaPeelApp().run()
+
+
+if __name__ == "__main__":
+    main()

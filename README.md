@@ -2,6 +2,9 @@
 
 **[한국어](README.md)** | [English](README.en.md)
 
+[![Test](https://github.com/Star001-KR/ChromaPeel/actions/workflows/test.yml/badge.svg)](https://github.com/Star001-KR/ChromaPeel/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 PNG 이미지의 특정 배경색(크로마 키)을 투명하게 처리하는 배치 도구입니다. 안티앨리어싱된 엣지의 색상 프린지까지 깔끔하게 제거합니다.
 
 ## 사용 예시
@@ -54,6 +57,12 @@ setup.bat
 1. `.venv` 가상환경 생성 (없을 경우)
 2. pip 업그레이드 및 의존성 설치
 3. `base/`, `alpha/` 폴더 생성
+
+**개발자 설치 (pip editable)**: 테스트 스위트나 `chromapeel` / `chromapeel-cli` 콘솔 스크립트를 사용하려면 다음을 실행합니다.
+
+```bash
+pip install -e ".[dev]"
+```
 
 ## 사용법
 
@@ -161,8 +170,8 @@ ChromaPeel/
 알고리즘 단위 테스트와 JS↔Python 바이트 단위 패리티 테스트가 `tests/`에 들어 있습니다.
 
 ```bash
-.venv/bin/python -m pytest tests/ -v   # macOS/Linux
-.venv\Scripts\python.exe -m pytest tests/ -v   # Windows
+pip install -e ".[dev]"   # pytest 포함 한 번만
+pytest -v
 ```
 
-JS 패리티 테스트는 `node`가 설치된 환경에서만 실행되며, 없으면 자동으로 스킵됩니다.
+JS 패리티 테스트는 `node`가 설치된 환경에서만 실행되며, 없으면 자동으로 스킵됩니다. 모든 푸시·PR은 GitHub Actions에서 Ubuntu / Windows / macOS × Python 3.8 / 3.10 / 3.12 매트릭스로 자동 검증됩니다.

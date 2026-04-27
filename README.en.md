@@ -2,6 +2,9 @@
 
 [한국어](README.md) | **[English](README.en.md)**
 
+[![Test](https://github.com/Star001-KR/ChromaPeel/actions/workflows/test.yml/badge.svg)](https://github.com/Star001-KR/ChromaPeel/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A batch tool that makes a specific background color (chroma key) transparent in PNG images. It also cleanly removes color fringes on anti-aliased edges.
 
 ## Example
@@ -54,6 +57,12 @@ It automatically:
 1. Creates a `.venv` virtual environment (if missing)
 2. Upgrades pip and installs dependencies
 3. Creates `base/` and `alpha/` folders
+
+**Developer install (pip editable)**: to run the test suite or use the `chromapeel` / `chromapeel-cli` console scripts, run:
+
+```bash
+pip install -e ".[dev]"
+```
 
 ## Usage
 
@@ -161,8 +170,8 @@ ChromaPeel/
 Algorithm unit tests plus a byte-for-byte JS↔Python parity test live under `tests/`.
 
 ```bash
-.venv/bin/python -m pytest tests/ -v   # macOS / Linux
-.venv\Scripts\python.exe -m pytest tests/ -v   # Windows
+pip install -e ".[dev]"   # once, includes pytest
+pytest -v
 ```
 
-The JS parity test runs only when `node` is available; otherwise it's auto-skipped.
+The JS parity test runs only when `node` is available; otherwise it's auto-skipped. Every push and pull request is verified by GitHub Actions across Ubuntu / Windows / macOS × Python 3.8 / 3.10 / 3.12.

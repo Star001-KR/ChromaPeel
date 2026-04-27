@@ -3,6 +3,8 @@ import numpy as np
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
+__version__ = "0.1.0"
+
 RGB = Tuple[int, int, int]
 
 # (index, total, input_path, output_path or None, error or None)
@@ -142,7 +144,7 @@ def process_folder(
             progress_callback(i, total, str(file), str(out_file), None)
 
 
-if __name__ == "__main__":
+def _run_cli() -> None:
     def _cli_progress(i, total, in_path, out_path, error):
         name = Path(in_path).name
         if error is not None:
@@ -160,3 +162,7 @@ if __name__ == "__main__":
         edge_erosion=1,
         progress_callback=_cli_progress,
     )
+
+
+if __name__ == "__main__":
+    _run_cli()
