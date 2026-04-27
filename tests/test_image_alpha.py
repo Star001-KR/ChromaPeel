@@ -124,7 +124,54 @@ def test_process_folder_processes_all_pngs(tmp_path):
     )
     assert (out_dir / "a.png").exists()
     assert (out_dir / "b.png").exists()
-    assert events == [(1, 2, "a.png", True, None), (2, 2, "b.png", True, None)]
+    # Default mode is parallel; completion order is non-deterministic.
+    # Verify the set of events instead of strict order.
+    assert {e[2] for e in events} == {"a.png", "b.png"}
+    assert all(e[1] == 2 and e[3] is True and e[4] is None for e in events)
+    assert sorted(e[0] for e in events) == [1, 2]
+
+
+def test_process_folder_max_workers_one_preserves_order(tmp_path):
+    """max_workers=1 falls back to sequential processing with deterministic callback order."""
+    in_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    in_dir.mkdir()
+    for name in ("a.png", "b.png", "c.png"):
+        _save(_solid((255, 37, 255)), in_dir / name)
+
+    events = []
+    imageAlpha.process_folder(
+        str(in_dir), str(out_dir),
+        target_color=(255, 37, 255), tolerance=10,
+        progress_callback=lambda i, n, ip, op, err: events.append((i, Path(ip).name)),
+        max_workers=1,
+    )
+    assert events == [(1, "a.png"), (2, "b.png"), (3, "c.png")]
+
+
+def test_process_folder_parallel_correctness(tmp_path):
+    """Many files in parallel: every input produces an output and a success callback."""
+    in_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    in_dir.mkdir()
+    names = [f"f{i:02d}.png" for i in range(8)]
+    for name in names:
+        _save(_solid((255, 37, 255)), in_dir / name)
+
+    events = []
+    imageAlpha.process_folder(
+        str(in_dir), str(out_dir),
+        target_color=(255, 37, 255), tolerance=10,
+        progress_callback=lambda i, n, ip, op, err: events.append((i, n, Path(ip).name, op is not None, err)),
+        # Force >1 workers even when cpu_count is low (e.g. CI runners).
+        max_workers=4,
+    )
+    # Every file produced an output
+    for name in names:
+        assert (out_dir / name).exists()
+    # Every file emitted exactly one success event
+    assert {e[2] for e in events} == set(names)
+    assert all(e[1] == len(names) and e[3] is True and e[4] is None for e in events)
+    # Indices cover 1..len(names) exactly
+    assert sorted(e[0] for e in events) == list(range(1, len(names) + 1))
 
 
 def test_process_folder_continues_on_per_file_failure(tmp_path):

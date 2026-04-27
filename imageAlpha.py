@@ -1,5 +1,7 @@
 from PIL import Image
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from pathlib import Path
 from typing import Callable, Optional, Tuple
@@ -104,6 +106,7 @@ def process_folder(
     decontaminate: bool = True,
     edge_erosion: int = 0,
     progress_callback: Optional[ProgressCallback] = None,
+    max_workers: Optional[int] = None,
 ) -> None:
     """
     input_dir 내 모든 PNG 이미지에 알파 처리를 적용해 output_dir에 저장합니다.
@@ -117,7 +120,12 @@ def process_folder(
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
     :param progress_callback: 각 파일 처리 후 호출. 시그니처:
         (index, total, input_path, output_path or None, error or None).
+        index는 "N번째 완료"를 의미하며, 병렬 모드에서는 입력 순서와 다를 수 있습니다.
         한 파일이 실패해도 다음 파일을 계속 처리합니다.
+    :param max_workers: 동시 처리 워커 수.
+        None(기본) — `min(os.cpu_count(), 파일 수)` 자동 결정.
+        1 — 순차 처리 (입력 순서대로 콜백 보장; 결정적 동작이 필요할 때).
+        N — N개 스레드로 병렬 처리.
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -134,18 +142,41 @@ def process_folder(
         return
 
     total = len(png_files)
-    for i, file in enumerate(png_files, 1):
+    if max_workers is None:
+        workers = min(os.cpu_count() or 4, total)
+    else:
+        workers = max(1, max_workers)
+
+    logger.info("배치 처리 시작: %d개 파일, 워커 %d", total, workers)
+
+    def _process_one(file: Path) -> Tuple[Path, Optional[Path], Optional[BaseException]]:
         out_file = output_path / file.name
         try:
             remove_color(str(file), str(out_file), target_color, tolerance,
                          feather, decontaminate, edge_erosion)
+            return file, out_file, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
-            if progress_callback is not None:
-                progress_callback(i, total, str(file), None, e)
-            continue
+            return file, None, e
+
+    def _emit(i: int, in_file: Path, out_file: Optional[Path], err: Optional[BaseException]) -> None:
         if progress_callback is not None:
-            progress_callback(i, total, str(file), str(out_file), None)
+            progress_callback(i, total, str(in_file),
+                              str(out_file) if out_file is not None else None, err)
+
+    if workers == 1:
+        # Sequential path keeps submission order — needed by callers that
+        # rely on deterministic callback ordering (e.g. some tests).
+        for i, file in enumerate(png_files, 1):
+            in_file, out_file, err = _process_one(file)
+            _emit(i, in_file, out_file, err)
+        return
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(_process_one, f) for f in png_files]
+        for i, future in enumerate(as_completed(futures), 1):
+            in_file, out_file, err = future.result()
+            _emit(i, in_file, out_file, err)
 
 
 def _run_cli() -> None:
