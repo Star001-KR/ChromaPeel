@@ -3,6 +3,8 @@
 The actual OS clipboard is never touched: subprocess.run / shutil.which / sys
 are monkeypatched so these tests are platform-agnostic.
 """
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path
