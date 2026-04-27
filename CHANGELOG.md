@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitHub Actions workflow running pytest on Python 3.8 / 3.10 / 3.12 across Ubuntu, Windows, macOS
 - MIT `LICENSE` file
 - This changelog
+- `clipboard_utils` unit tests (12 tests): platform dispatch, macOS symlink-based path safety regression, Linux wl-copy/xclip fallback chain, per-tool failure modes
+- `logging` instrumentation in `chromapeel_gui` and `imageAlpha` so previously silent failures (thumbnail load, drag-drop parsing, input cleanup, per-file batch failure) are now diagnosable
 
 ## [0.1.0] - 2026-04-27
 

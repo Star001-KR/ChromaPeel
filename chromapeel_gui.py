@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -15,6 +16,8 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 import imageAlpha
 from imageAlpha import __version__
 from clipboard_utils import copy_image_to_clipboard
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_TARGET_COLOR = (255, 37, 255)
 DEFAULT_TOLERANCE = 20
@@ -120,6 +123,7 @@ class ThumbnailView(ttk.Frame):
             img.thumbnail((THUMB_SIZE, THUMB_SIZE))
             photo = ImageTk.PhotoImage(img)
         except Exception:
+            logger.warning("썸네일 로드 실패: %s", path, exc_info=True)
             return
 
         idx = len(self._cells)
@@ -343,6 +347,7 @@ class ChromaPeelApp:
         try:
             paths = self.root.tk.splitlist(event.data)
         except Exception:
+            logger.debug("DnD 페이로드 splitlist 실패; 단일 경로로 폴백", exc_info=True)
             paths = [event.data]
 
         added = 0
@@ -402,7 +407,7 @@ class ChromaPeelApp:
             try:
                 f.unlink()
             except Exception:
-                pass
+                logger.warning("입력 파일 제거 실패: %s", f, exc_info=True)
         self._refresh_inputs_from_disk()
         self._set_status("입력을 비웠습니다")
 
@@ -629,6 +634,10 @@ class ChromaPeelApp:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     ChromaPeelApp().run()
 
 

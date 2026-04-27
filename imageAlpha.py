@@ -1,9 +1,12 @@
 from PIL import Image
+import logging
 import numpy as np
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 __version__ = "0.1.0"
+
+logger = logging.getLogger(__name__)
 
 RGB = Tuple[int, int, int]
 
@@ -137,6 +140,7 @@ def process_folder(
             remove_color(str(file), str(out_file), target_color, tolerance,
                          feather, decontaminate, edge_erosion)
         except Exception as e:
+            logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
             if progress_callback is not None:
                 progress_callback(i, total, str(file), None, e)
             continue
