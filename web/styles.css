@@ -271,3 +271,68 @@ footer {
   font-size: 12px;
 }
 footer a { color: var(--accent); text-decoration: none; }
+
+/* Mode switch (chroma / crop tabs) */
+.mode-switch {
+  display: flex;
+  gap: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+}
+.mode-tab {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  user-select: none;
+}
+.mode-tab input { display: none; }
+.mode-tab:has(input:checked) {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.mode-tab:active { opacity: 0.85; }
+
+.mode-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mode-pane[hidden] { display: none; }
+
+/* Crop mode */
+#cropCanvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+.crop-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  flex-wrap: wrap;
+}
+.crop-info-label {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: #333;
+}
+.crop-coords {
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 0;
+}
