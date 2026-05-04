@@ -25,6 +25,8 @@ DEFAULT_FEATHER = 100
 DEFAULT_DECONTAMINATE = True
 DEFAULT_EDGE_EROSION = 1
 DEFAULT_AUTO_DETECT_BG = False
+DEFAULT_AUTO_TRIM = False
+DEFAULT_TRIM_PADDING = 0
 
 THUMB_SIZE = 96
 
@@ -183,6 +185,8 @@ class ChromaPeelApp:
         self.decontaminate = tk.BooleanVar(value=DEFAULT_DECONTAMINATE)
         self.edge_erosion = tk.IntVar(value=DEFAULT_EDGE_EROSION)
         self.auto_detect_bg = tk.BooleanVar(value=DEFAULT_AUTO_DETECT_BG)
+        self.auto_trim = tk.BooleanVar(value=DEFAULT_AUTO_TRIM)
+        self.trim_padding = tk.IntVar(value=DEFAULT_TRIM_PADDING)
 
         self.advanced_visible = False
         self.processing = False
@@ -282,6 +286,13 @@ class ChromaPeelApp:
         ttk.Checkbutton(edge_row, text="Decontaminate", variable=self.decontaminate).pack(side="left", padx=16)
         ttk.Button(edge_row, text="기본값 복원", command=self._reset_defaults).pack(side="right")
 
+        trim_row = ttk.Frame(parent)
+        trim_row.pack(fill="x", pady=3)
+        ttk.Label(trim_row, text="자동 트림:", width=14).pack(side="left")
+        ttk.Checkbutton(trim_row, text="투명 외곽 자동 자르기", variable=self.auto_trim).pack(side="left", padx=4)
+        ttk.Label(trim_row, text="Padding:").pack(side="left", padx=(16, 4))
+        ttk.Spinbox(trim_row, from_=0, to=200, textvariable=self.trim_padding, width=5).pack(side="left")
+
     def _build_scale_row(self, parent, label_text: str, variable: tk.IntVar,
                          from_: int, to_: int) -> None:
         row = ttk.Frame(parent)
@@ -332,6 +343,8 @@ class ChromaPeelApp:
         self.decontaminate.set(DEFAULT_DECONTAMINATE)
         self.edge_erosion.set(DEFAULT_EDGE_EROSION)
         self.auto_detect_bg.set(DEFAULT_AUTO_DETECT_BG)
+        self.auto_trim.set(DEFAULT_AUTO_TRIM)
+        self.trim_padding.set(DEFAULT_TRIM_PADDING)
         self._update_color_ui_state()
         self._set_status("기본값으로 복원")
 
@@ -572,6 +585,8 @@ class ChromaPeelApp:
             "feather": int(self.feather.get()),
             "decontaminate": bool(self.decontaminate.get()),
             "edge_erosion": int(self.edge_erosion.get()),
+            "auto_trim": bool(self.auto_trim.get()),
+            "trim_padding": int(self.trim_padding.get()),
         }
 
         threading.Thread(target=self._run_process, args=(params,), daemon=True).start()

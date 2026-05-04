@@ -83,6 +83,19 @@
           <input id="decontaminate" type="checkbox" checked />
           Decontaminate
         </label>
+        <label class="check">
+          <input id="autoTrim" type="checkbox" />
+          자동 트림
+        </label>
+      </div>
+
+      <div class="row">
+        <label for="trimPadding">Trim Padding</label>
+        <input id="trimPadding" type="range" min="0" max="200" value="0" />
+        <span id="trimPaddingVal" class="num">0</span>
+      </div>
+
+      <div class="row">
         <button id="resetBtn" class="ghost">기본값 복원</button>
       </div>
     </section>

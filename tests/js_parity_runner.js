@@ -47,6 +47,12 @@ const result = processImage(new ImageData(data, meta.w, meta.h), {
   feather: meta.feather,
   decontaminate: meta.decontaminate,
   edgeErosion: meta.edge_erosion,
+  autoTrim: meta.auto_trim || false,
+  trimPadding: meta.trim_padding || 0,
 });
 
 fs.writeFileSync(path.join(tmpDir, 'js.rgba'), Buffer.from(result.data.buffer));
+fs.writeFileSync(
+  path.join(tmpDir, 'js_meta.json'),
+  JSON.stringify({ w: result.width, h: result.height }),
+);

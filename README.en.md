@@ -29,6 +29,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 - **Feather gradient** — soft fade on edge pixels
 - **Color Decontamination** — removes background-color tint from semi-transparent pixels
 - **Edge Erosion** — fully removes residual fringe
+- **Auto-trim (optional)** — automatically crops the transparent outer area of the result via the alpha bbox (with optional padding)
 - **Continue on partial failure** — a single corrupt input no longer aborts the rest of the batch
 - Batch folder processing (CLI mode)
 
@@ -76,7 +77,7 @@ Run `run.bat` (Windows) or `./run.sh` (macOS / Linux) to launch the GUI.
 
 **Thumbnail actions**: double-click to open in your default image viewer; right-click for a menu with copy image to clipboard · copy file path · reveal in Explorer · **(output panel) Rename...** · (input panel) remove this input. Rename auto-appends `.png` and rejects characters that are illegal on Windows.
 
-Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, and decontaminate from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Use "Reset to Defaults" to restore factory values at any time.
+Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, decontaminate, and **auto-trim / padding** from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Enable **"Auto-trim"** to crop the result to the alpha bbox (with optional padding). Use "Reset to Defaults" to restore factory values at any time.
 
 > Internally, inputs are staged in `base/` and outputs are saved to `alpha/`. The "Open Result Folder" button opens `alpha/` in Explorer.
 
@@ -107,6 +108,13 @@ The web version targets single-image editing, and all processing runs locally in
 
 3. Find the results in the `alpha/` folder.
 
+CLI flags:
+
+| Flag | Description |
+|------|-------------|
+| `--auto-trim` | Crop the transparent outer area using the alpha bbox just before saving |
+| `--trim-padding N` | Extra pixels added to each side of the `--auto-trim` bbox (default 0) |
+
 ## Parameters
 
 Adjust via the advanced settings toggle in GUI mode, or via the `process_folder()` call at the bottom of `imageAlpha.py` in CLI mode.
@@ -120,6 +128,8 @@ Adjust via the advanced settings toggle in GUI mode, or via the `process_folder(
 | `feather` | Semi-transparent fade range | `100` |
 | `decontaminate` | Remove background-color tint | `True` |
 | `edge_erosion` | Number of erosion pixels on edges | `1` |
+| `auto_trim` | Crop transparent edges via alpha bbox before saving (skipped with a warning if the whole image is transparent) | `False` |
+| `trim_padding` | Extra pixels added to each side of the `auto_trim` bbox | `0` |
 
 ## How it works
 
@@ -130,6 +140,7 @@ Adjust via the advanced settings toggle in GUI mode, or via the `process_folder(
 5. **Decontamination** — removes target-color component from semi-transparent pixels by inverting the blend formula
    - `observed = t·target + (1-t)·original` → `original = (observed - t·target) / (1-t)`
 6. **Edge Erosion** — erodes N pixels of opaque area adjacent to transparent regions using a 3×3 min filter
+7. **(Optional) Auto-trim** — when `auto_trim=True`, crops the result to the bbox of pixels with alpha > 0. If the image is fully transparent, trim is skipped with a warning log (the original is saved as-is)
 
 ## Project structure
 

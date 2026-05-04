@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clipboard_utils` unit tests (12 tests): platform dispatch, macOS symlink-based path safety regression, Linux wl-copy/xclip fallback chain, per-tool failure modes
 - `logging` instrumentation in `chromapeel_gui` and `imageAlpha` so previously silent failures (thumbnail load, drag-drop parsing, input cleanup, per-file batch failure) are now diagnosable
 - Parallel batch processing via `ThreadPoolExecutor`. `process_folder` accepts a new `max_workers` parameter — `None` (default) auto-sizes to `min(os.cpu_count(), file_count)`, `1` preserves the previous deterministic per-file callback order
+- Add auto-trim of transparent edges as post-processing option. `process_folder` / `remove_color` accept `auto_trim` and `trim_padding`; CLI exposes `--auto-trim` / `--trim-padding N`; desktop GUI and web build expose matching controls. All-transparent results skip trim with a warning log (the original is preserved). JS↔Python parity covers both on/off cases.
 
 ### Changed
 - `process_folder` callback `index` now means "Nth completion", which in parallel mode no longer matches submission order. Pass `max_workers=1` to keep the old strict ordering.
