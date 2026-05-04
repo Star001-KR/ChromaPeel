@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `clipboard_utils` unit tests (12 tests): platform dispatch, macOS symlink-based path safety regression, Linux wl-copy/xclip fallback chain, per-tool failure modes
 - `logging` instrumentation in `chromapeel_gui` and `imageAlpha` so previously silent failures (thumbnail load, drag-drop parsing, input cleanup, per-file batch failure) are now diagnosable
 - Parallel batch processing via `ThreadPoolExecutor`. `process_folder` accepts a new `max_workers` parameter — `None` (default) auto-sizes to `min(os.cpu_count(), file_count)`, `1` preserves the previous deterministic per-file callback order
+- Manual crop tool: select a single rectangular region by mouse/touch drag with 8-handle resize, available as `chromapeel-crop` CLI, desktop GUI right-click modal, and web mode. Single region only (multi-region as future work).
 
 ### Changed
 - `process_folder` callback `index` now means "Nth completion", which in parallel mode no longer matches submission order. Pass `max_workers=1` to keep the old strict ordering.
