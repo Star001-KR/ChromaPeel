@@ -42,7 +42,8 @@ chromapeel-crop = "manual_crop:_run_cli"
 chromapeel = "chromapeel_gui:main"
 
 [tool.setuptools]
-py-modules = ["imageAlpha", "chromapeel_gui", "clipboard_utils", "grid_split", "manual_crop"]
+py-modules = ["imageAlpha", "clipboard_utils", "grid_split", "manual_crop"]
+packages = ["chromapeel_gui"]
 
 [tool.setuptools.dynamic]
 version = { attr = "imageAlpha.__version__" }
