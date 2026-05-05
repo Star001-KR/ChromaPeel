@@ -220,3 +220,127 @@ def test_process_folder_empty_input_is_noop(tmp_path):
     )
     assert events == []
     assert out_dir.is_dir()  # still created
+
+
+# ---------- trim_transparent_edges (helper) ----------
+
+def test_trim_bbox_finds_opaque_region():
+    # 10x10 fully transparent canvas with a 2x2 opaque block at (3,4)..(4,5)
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[4:6, 3:5, :] = [10, 20, 30, 255]
+    bbox = imageAlpha.trim_transparent_edges(arr)
+    assert bbox == (3, 4, 5, 6)  # (left, top, right, bottom), exclusive
+
+
+def test_trim_bbox_returns_none_when_all_transparent():
+    arr = np.zeros((4, 4, 4), dtype=np.uint8)
+    assert imageAlpha.trim_transparent_edges(arr) is None
+
+
+def test_trim_bbox_padding_clamped_to_image():
+    arr = np.zeros((6, 6, 4), dtype=np.uint8)
+    arr[2:4, 2:4, :] = [10, 20, 30, 255]
+    # padding=1 should give (1, 1, 5, 5)
+    assert imageAlpha.trim_transparent_edges(arr, padding=1) == (1, 1, 5, 5)
+    # padding=10 (huge) should clamp to image bounds
+    assert imageAlpha.trim_transparent_edges(arr, padding=10) == (0, 0, 6, 6)
+
+
+def test_trim_bbox_alpha_threshold():
+    arr = np.zeros((6, 6, 4), dtype=np.uint8)
+    arr[2, 2, :] = [10, 20, 30, 50]   # semi-transparent
+    arr[3, 3, :] = [10, 20, 30, 200]  # more opaque
+    # threshold=0: both pixels qualify → bbox covers (2,2)..(3,3)
+    assert imageAlpha.trim_transparent_edges(arr, alpha_threshold=0) == (2, 2, 4, 4)
+    # threshold=100: only the 200-alpha pixel qualifies
+    assert imageAlpha.trim_transparent_edges(arr, alpha_threshold=100) == (3, 3, 4, 4)
+
+
+# ---------- remove_color with auto_trim ----------
+
+def test_auto_trim_crops_transparent_edges(tmp_path):
+    """An image with a small opaque region surrounded by background → output is cropped."""
+    arr = _solid((255, 37, 255), (12, 12))  # all magenta background
+    arr[4:7, 5:8] = [50, 200, 100, 255]  # 3x3 opaque block in the middle
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_color=(255, 37, 255), tolerance=10,
+                            feather=0, decontaminate=False, edge_erosion=0,
+                            auto_trim=True, trim_padding=0)
+    out = np.array(Image.open(out_p))
+    # Cropped to the 3x3 opaque region
+    assert out.shape == (3, 3, 4)
+    assert (out[..., 3] == 255).all()
+    assert (out[..., :3] == [50, 200, 100]).all()
+
+
+def test_auto_trim_with_padding(tmp_path):
+    arr = _solid((255, 37, 255), (12, 12))
+    arr[4:7, 5:8] = [50, 200, 100, 255]
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_color=(255, 37, 255), tolerance=10,
+                            feather=0, decontaminate=False, edge_erosion=0,
+                            auto_trim=True, trim_padding=1)
+    out = np.array(Image.open(out_p))
+    # 3x3 opaque + 1px padding on each side = 5x5
+    assert out.shape == (5, 5, 4)
+    # The padding ring is transparent (was magenta → alpha=0)
+    assert out[0, 0, 3] == 0
+    # Original opaque block sits at (1,1)..(3,3)
+    assert (out[1:4, 1:4, 3] == 255).all()
+
+
+def test_auto_trim_skipped_when_all_transparent(tmp_path, caplog):
+    """All-transparent result should keep original dimensions and emit a warning."""
+    arr = _solid((255, 37, 255), (8, 8))  # entirely background → fully transparent after removal
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    with caplog.at_level("WARNING"):
+        imageAlpha.remove_color(str(in_p), str(out_p),
+                                target_color=(255, 37, 255), tolerance=10,
+                                feather=0, decontaminate=False, edge_erosion=0,
+                                auto_trim=True, trim_padding=0)
+
+    out = np.array(Image.open(out_p))
+    assert out.shape == (8, 8, 4)  # not cropped
+    assert (out[..., 3] == 0).all()
+    assert any("자동 트림 스킵" in r.message for r in caplog.records)
+
+
+def test_auto_trim_off_keeps_full_dimensions(tmp_path):
+    arr = _solid((255, 37, 255), (8, 8))
+    arr[3:5, 3:5] = [50, 200, 100, 255]
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_color=(255, 37, 255), tolerance=10,
+                            feather=0, decontaminate=False, edge_erosion=0,
+                            auto_trim=False)
+    out = np.array(Image.open(out_p))
+    assert out.shape == (8, 8, 4)  # original size preserved
+
+
+# ---------- process_folder with auto_trim ----------
+
+def test_process_folder_propagates_auto_trim(tmp_path):
+    in_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    in_dir.mkdir()
+    arr = _solid((255, 37, 255), (10, 10))
+    arr[4:6, 4:6] = [50, 200, 100, 255]
+    _save(arr, in_dir / "a.png")
+
+    imageAlpha.process_folder(
+        str(in_dir), str(out_dir),
+        target_color=(255, 37, 255), tolerance=10,
+        auto_trim=True, trim_padding=0,
+        max_workers=1,
+    )
+    out = np.array(Image.open(out_dir / "a.png"))
+    assert out.shape == (2, 2, 4)  # cropped to the 2x2 opaque region

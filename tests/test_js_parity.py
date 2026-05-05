@@ -29,7 +29,12 @@ def _build_test_image(w=36, h=24):
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
-def test_js_matches_python(tmp_path):
+@pytest.mark.parametrize("auto_trim,trim_padding", [
+    (False, 0),
+    (True, 0),
+    (True, 2),
+])
+def test_js_matches_python(tmp_path, auto_trim, trim_padding):
     arr = _build_test_image()
     h, w = arr.shape[:2]
 
@@ -38,10 +43,13 @@ def test_js_matches_python(tmp_path):
     arr.tofile(tmp_path / "in.rgba")
 
     params = dict(target_color=(255, 37, 255), tolerance=20, feather=100,
-                  decontaminate=True, edge_erosion=1)
+                  decontaminate=True, edge_erosion=1,
+                  auto_trim=auto_trim, trim_padding=trim_padding)
     py_out = tmp_path / "py.png"
     imageAlpha.remove_color(str(in_png), str(py_out), **params)
-    np.array(Image.open(py_out)).tofile(tmp_path / "py.rgba")
+    py_arr = np.array(Image.open(py_out))
+    py_arr.tofile(tmp_path / "py.rgba")
+    py_h, py_w = py_arr.shape[:2]
 
     meta = {"w": w, "h": h, **params, "target_color": list(params["target_color"])}
     (tmp_path / "meta.json").write_text(json.dumps(meta))
@@ -51,6 +59,11 @@ def test_js_matches_python(tmp_path):
         capture_output=True, text=True,
     )
     assert result.returncode == 0, f"node runner failed: {result.stderr}"
+
+    js_meta = json.loads((tmp_path / "js_meta.json").read_text())
+    assert (js_meta["w"], js_meta["h"]) == (py_w, py_h), (
+        f"output dimensions diverge: py={py_w}x{py_h}, js={js_meta['w']}x{js_meta['h']}"
+    )
 
     py = (tmp_path / "py.rgba").read_bytes()
     js = (tmp_path / "js.rgba").read_bytes()

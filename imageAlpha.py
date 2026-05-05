@@ -35,6 +35,42 @@ def detect_background_color(data: np.ndarray) -> RGB:
     return (int(best[0]), int(best[1]), int(best[2]))
 
 
+def trim_transparent_edges(
+    rgba: np.ndarray,
+    alpha_threshold: int = 0,
+    padding: int = 0,
+) -> Optional[Tuple[int, int, int, int]]:
+    """알파 채널의 bbox를 계산해 (left, top, right, bottom) 튜플로 반환합니다.
+
+    PIL.Image.crop과 동일한 (left, top, right, bottom) 형식 — right/bottom은 exclusive.
+    `alpha_threshold` 초과 픽셀이 하나도 없으면 None을 반환합니다(전체 투명).
+
+    :param rgba: (H, W, 4) uint8 RGBA 배열
+    :param alpha_threshold: 이 값을 초과하는 알파를 가진 픽셀만 보존 대상으로 간주 (0=완전 투명만 자르기)
+    :param padding: bbox 사방으로 추가할 여유 픽셀 (이미지 경계로 클램프)
+    """
+    alpha = rgba[..., 3]
+    mask = alpha > alpha_threshold
+    if not mask.any():
+        return None
+
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    ys = np.where(rows)[0]
+    xs = np.where(cols)[0]
+    top, bottom = int(ys[0]), int(ys[-1]) + 1
+    left, right = int(xs[0]), int(xs[-1]) + 1
+
+    h, w = rgba.shape[:2]
+    if padding > 0:
+        top = max(0, top - padding)
+        left = max(0, left - padding)
+        bottom = min(h, bottom + padding)
+        right = min(w, right + padding)
+
+    return left, top, right, bottom
+
+
 def remove_color(
     input_path: str,
     output_path: str,
@@ -43,9 +79,12 @@ def remove_color(
     feather: int = 0,
     decontaminate: bool = True,
     edge_erosion: int = 0,
+    auto_trim: bool = False,
+    trim_padding: int = 0,
+    trim_alpha_threshold: int = 0,
 ) -> None:
     """
-    특정 색상을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 지원.
+    특정 색상을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 + 자동 트림 지원.
 
     :param input_path: 입력 이미지 경로
     :param output_path: 출력 이미지 경로 (PNG 권장)
@@ -54,6 +93,9 @@ def remove_color(
     :param feather: 반투명 페이드 범위. tolerance~(tolerance+feather) 구간은 선형 그라데이션으로 알파 적용
     :param decontaminate: True면 반투명 엣지 픽셀에서 타겟 색상 성분을 빼서 핑크/컬러 프린지 제거
     :param edge_erosion: 투명 영역과 인접한 불투명 픽셀을 N픽셀만큼 깎음 (잔여 프린지 제거). 얇은 피처 유실 주의.
+    :param auto_trim: True면 저장 직전에 알파 bbox로 잘라 투명 외곽을 제거합니다.
+    :param trim_padding: auto_trim bbox 사방에 추가할 여유 픽셀 수.
+    :param trim_alpha_threshold: 이 값을 초과하는 알파만 bbox 계산에 포함 (기본 0 = 완전 투명만 자르기).
     """
     img = Image.open(input_path).convert("RGBA")
     data = np.array(img).astype(np.float32)
@@ -94,8 +136,18 @@ def remove_color(
             ])
         data[..., 3] = alpha
 
-    result = Image.fromarray(np.clip(data, 0, 255).astype(np.uint8))
-    result.save(output_path, "PNG")
+    final = np.clip(data, 0, 255).astype(np.uint8)
+
+    if auto_trim:
+        bbox = trim_transparent_edges(final, alpha_threshold=trim_alpha_threshold,
+                                      padding=trim_padding)
+        if bbox is None:
+            logger.warning("자동 트림 스킵: 모든 픽셀이 투명입니다 — %s", input_path)
+        else:
+            left, top, right, bottom = bbox
+            final = final[top:bottom, left:right]
+
+    Image.fromarray(final).save(output_path, "PNG")
 
 def process_folder(
     input_dir: str,
@@ -105,6 +157,8 @@ def process_folder(
     feather: int = 0,
     decontaminate: bool = True,
     edge_erosion: int = 0,
+    auto_trim: bool = False,
+    trim_padding: int = 0,
     progress_callback: Optional[ProgressCallback] = None,
     max_workers: Optional[int] = None,
 ) -> None:
@@ -118,6 +172,8 @@ def process_folder(
     :param feather: 반투명 페이드 범위
     :param decontaminate: 엣지 색상 프린지 제거 여부
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
+    :param auto_trim: True면 저장 직전 알파 bbox로 투명 외곽을 잘라냄 (전체 투명 시 원본 유지)
+    :param trim_padding: auto_trim bbox 사방으로 추가할 여유 픽셀 수
     :param progress_callback: 각 파일 처리 후 호출. 시그니처:
         (index, total, input_path, output_path or None, error or None).
         index는 "N번째 완료"를 의미하며, 병렬 모드에서는 입력 순서와 다를 수 있습니다.
@@ -153,7 +209,8 @@ def process_folder(
         out_file = output_path / file.name
         try:
             remove_color(str(file), str(out_file), target_color, tolerance,
-                         feather, decontaminate, edge_erosion)
+                         feather, decontaminate, edge_erosion,
+                         auto_trim=auto_trim, trim_padding=trim_padding)
             return file, out_file, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
@@ -180,6 +237,18 @@ def process_folder(
 
 
 def _run_cli() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="chromapeel-cli",
+        description="base/ 폴더의 PNG에서 크로마 키를 제거해 alpha/ 폴더로 저장합니다.",
+    )
+    parser.add_argument("--auto-trim", action="store_true",
+                        help="저장 직전에 알파 bbox로 투명 외곽을 잘라냅니다.")
+    parser.add_argument("--trim-padding", type=int, default=0, metavar="N",
+                        help="--auto-trim bbox 사방으로 추가할 여유 픽셀 수 (기본 0).")
+    args = parser.parse_args()
+
     def _cli_progress(i, total, in_path, out_path, error):
         name = Path(in_path).name
         if error is not None:
@@ -195,6 +264,8 @@ def _run_cli() -> None:
         feather=100,
         decontaminate=True,
         edge_erosion=1,
+        auto_trim=args.auto_trim,
+        trim_padding=args.trim_padding,
         progress_callback=_cli_progress,
     )
 

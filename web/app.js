@@ -15,6 +15,8 @@ const state = {
   feather: 100,
   decontaminate: true,
   edgeErosion: 1,
+  autoTrim: false,
+  trimPadding: 0,
 };
 
 // ---------- Algorithm ----------
@@ -120,7 +122,57 @@ function processImage(srcImageData, params) {
     for (let i = 0; i < n; i++) out[i * 4 + 3] = cur[i];
   }
 
-  return new ImageData(out, width, height);
+  let result = new ImageData(out, width, height);
+
+  if (params.autoTrim) {
+    const trimmed = trimTransparentEdges(
+      result,
+      params.trimAlphaThreshold || 0,
+      params.trimPadding || 0,
+    );
+    if (trimmed === null) {
+      // Match Python: skip with warning, keep original
+      console.warn('자동 트림 스킵: 모든 픽셀이 투명입니다');
+    } else {
+      result = trimmed;
+    }
+  }
+
+  return result;
+}
+
+function trimTransparentEdges(imageData, alphaThreshold, padding) {
+  const { data, width, height } = imageData;
+  let top = -1, bottom = -1, left = width, right = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = data[(y * width + x) * 4 + 3];
+      if (a > alphaThreshold) {
+        if (top === -1) top = y;
+        bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+  if (top === -1) return null;
+
+  // Match PIL.Image.crop: right/bottom are exclusive.
+  let l = left, t = top, r = right + 1, b = bottom + 1;
+  if (padding > 0) {
+    l = Math.max(0, l - padding);
+    t = Math.max(0, t - padding);
+    r = Math.min(width, r + padding);
+    b = Math.min(height, b + padding);
+  }
+  const newW = r - l, newH = b - t;
+  const out = new Uint8ClampedArray(newW * newH * 4);
+  for (let y = 0; y < newH; y++) {
+    const srcRow = ((t + y) * width + l) * 4;
+    const dstRow = y * newW * 4;
+    out.set(data.subarray(srcRow, srcRow + newW * 4), dstRow);
+  }
+  return new ImageData(out, newW, newH);
 }
 
 // ---------- UI helpers ----------
@@ -257,6 +309,8 @@ function runProcess() {
       feather: state.feather,
       decontaminate: state.decontaminate,
       edgeErosion: state.edgeErosion,
+      autoTrim: state.autoTrim,
+      trimPadding: state.trimPadding,
     });
 
     const canvas = $('resultCanvas');
@@ -369,6 +423,18 @@ function init() {
     schedule();
   });
 
+  $('autoTrim').addEventListener('change', (e) => {
+    state.autoTrim = e.target.checked;
+    schedule();
+  });
+
+  $('trimPadding').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10) || 0;
+    state.trimPadding = v;
+    $('trimPaddingVal').textContent = String(v);
+    schedule();
+  });
+
   bindRange('tolerance', 'toleranceVal', 'tolerance', (v) => parseInt(v, 10));
   bindRange('feather', 'featherVal', 'feather', (v) => parseInt(v, 10));
   bindRange('edgeErosion', 'edgeErosionVal', 'edgeErosion', (v) => parseInt(v, 10));
@@ -380,11 +446,15 @@ function init() {
     state.edgeErosion = 1;
     state.autoDetect = false;
     state.targetColor = [255, 37, 255];
+    state.autoTrim = false;
+    state.trimPadding = 0;
     $('tolerance').value = 20; $('toleranceVal').textContent = '20';
     $('feather').value = 100; $('featherVal').textContent = '100';
     $('edgeErosion').value = 1; $('edgeErosionVal').textContent = '1';
     $('decontaminate').checked = true;
     $('autoDetect').checked = false;
+    $('autoTrim').checked = false;
+    $('trimPadding').value = 0; $('trimPaddingVal').textContent = '0';
     setColorUI([255, 37, 255]);
     syncAutoDetectUI();
     schedule();
