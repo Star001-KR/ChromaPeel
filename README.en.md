@@ -184,6 +184,42 @@ Adjust via the advanced settings toggle in GUI mode, or via the `process_folder(
 6. **Edge Erosion** — erodes N pixels of opaque area adjacent to transparent regions using a 3×3 min filter
 7. **(Optional) Auto-trim** — when `auto_trim=True`, crops the result to the bbox of pixels with alpha > 0. If the image is fully transparent, trim is skipped with a warning log (the original is saved as-is)
 
+## Manual Crop
+
+An **independent tool** that crops a single rectangular region out of an image. It runs independently of chroma-key removal; results are saved as `alpha/{stem}_crop.png`.
+
+### CLI
+
+The `chromapeel-crop` console script takes the four box coordinates as a comma-separated list of integers.
+
+```bash
+chromapeel-crop INPUT --crop X,Y,W,H
+```
+
+- `X,Y`: top-left pixel coordinate of the box (image origin is `(0, 0)`)
+- `W,H`: box width / height in pixels
+- Boxes extending past the image are clamped to the image bounds; `W` or `H` ≤ 0 exits with an error.
+
+### Desktop GUI
+
+**Right-click an input thumbnail → "Crop..."** to open the crop modal. From the modal you can:
+
+- Drag a new box, or grab an existing box and drag to move it
+- Resize via **8 handles** (4 corners + 4 edges)
+- Type values directly into the `X` / `Y` / `W` / `H` fields for precise adjustment
+
+Confirming the modal saves the result to `alpha/{stem}_crop.png`.
+
+### Web
+
+Switch to **"Crop"** in the top mode selector to enable the crop canvas. Draw a box with a mouse or touch drag, resize via the 8 handles, then tap **[Crop]** to save the resulting PNG.
+
+### Multi-region
+
+Only single-region cropping is supported today; multi-region selection is left as future work.
+
+> Automated tests only cover the core crop function; GUI / web interactions (drag, handles, touch) are outside the automated test scope and are verified manually.
+
 ## Project structure
 
 ```

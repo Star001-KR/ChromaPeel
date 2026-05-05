@@ -18,17 +18,24 @@
             aria-selected="true" data-mode="chroma">크로마 제거</button>
     <button id="modeGridBtn" class="mode-btn" role="tab"
             aria-selected="false" data-mode="grid">격자 분할</button>
+    <button id="modeCropBtn" class="mode-btn" role="tab"
+            aria-selected="false" data-mode="crop">크롭</button>
   </nav>
 
   <main>
     <!-- 공유: 파일 선택 -->
     <section class="actions">
-      <label class="file-btn">
+      <label class="file-btn chroma-grid">
         <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" />
+        <span>이미지 선택</span>
+      </label>
+      <label class="file-btn crop-only">
+        <input id="cropFileInput" type="file" accept="image/png,image/jpeg,image/webp" />
         <span>이미지 선택</span>
       </label>
       <button id="saveBtn" class="primary chroma-only" disabled>저장 / 공유</button>
       <button id="splitBtn" class="primary grid-only" disabled>격자 분할 실행</button>
+      <button id="cropApplyBtn" class="primary crop-only" disabled>잘라내기</button>
     </section>
 
     <!-- ==================== 크로마 제거 모드 ==================== -->
@@ -159,7 +166,36 @@
       <div id="gridResultsContainer" class="grid-results"></div>
     </section>
 
-    <p id="status" class="status" role="status"></p>
+    <!-- ==================== 크롭 모드 ==================== -->
+    <section class="previews crop-only" aria-label="크롭 미리보기">
+      <figure class="preview">
+        <figcaption>입력 (드래그로 영역 선택)</figcaption>
+        <div class="canvas-wrap" id="cropCanvasWrap">
+          <canvas id="cropCanvas"></canvas>
+          <p id="cropEmptyHint" class="empty-hint">
+            이미지를 선택하세요
+          </p>
+        </div>
+      </figure>
+      <figure class="preview">
+        <figcaption>결과 미리보기</figcaption>
+        <div class="canvas-wrap">
+          <canvas id="cropResultCanvas"></canvas>
+          <p id="cropResultHint" class="empty-hint">
+            영역을 선택 후<br/>잘라내기를 누르세요
+          </p>
+        </div>
+      </figure>
+    </section>
+
+    <section class="crop-info crop-only" aria-label="크롭 좌표">
+      <span class="crop-info-label">좌표</span>
+      <span id="cropCoords" class="crop-coords">x: 0, y: 0, w: 0, h: 0</span>
+      <button id="cropDownloadBtn" class="ghost" disabled>다운로드</button>
+    </section>
+
+    <p id="status" class="status chroma-grid" role="status"></p>
+    <p id="cropStatus" class="status crop-only" role="status"></p>
   </main>
 
   <footer>

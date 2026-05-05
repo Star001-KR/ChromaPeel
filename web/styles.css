@@ -68,9 +68,11 @@ html, body {
   font-weight: 600;
 }
 
-/* Mode visibility — body classes mode-chroma / mode-grid toggle these */
-body.mode-chroma .grid-only { display: none !important; }
-body.mode-grid .chroma-only { display: none !important; }
+/* Mode visibility — body class mode-chroma / mode-grid / mode-crop toggles these */
+body:not(.mode-chroma) .chroma-only { display: none !important; }
+body:not(.mode-grid) .grid-only { display: none !important; }
+body:not(.mode-crop) .crop-only { display: none !important; }
+body.mode-crop .chroma-grid { display: none !important; }
 
 main {
   max-width: 960px;
@@ -435,4 +437,32 @@ footer a { color: var(--accent); text-decoration: none; }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   word-break: break-all;
   text-align: center;
+}
+
+/* Crop mode */
+#cropCanvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+.crop-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  flex-wrap: wrap;
+}
+.crop-info-label {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: #333;
+}
+.crop-coords {
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 0;
 }
