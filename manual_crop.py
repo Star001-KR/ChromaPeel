@@ -67,7 +67,7 @@ def _parse_crop(value: str) -> tuple:
 def _run_cli() -> None:
     parser = argparse.ArgumentParser(
         prog="chromapeel-crop",
-        description="Crop a rectangular region from an image.",
+        description="이미지에서 직사각형 영역을 잘라냅니다.",
     )
     parser.add_argument("input", help="입력 이미지 경로")
     parser.add_argument(
