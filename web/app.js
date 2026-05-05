@@ -1137,6 +1137,40 @@ function bindRange(rangeId, valueId, key, parser) {
   update();
 }
 
+function initCrop() {
+  $('cropFileInput').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) loadCropFile(file);
+  });
+
+  const canvas = $('cropCanvas');
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerId !== undefined && canvas.setPointerCapture) {
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+    startCropDrag(e);
+  });
+  canvas.addEventListener('pointermove', moveCropDrag);
+  canvas.addEventListener('pointerup', (e) => {
+    endCropDrag(e);
+    if (e.pointerId !== undefined && canvas.releasePointerCapture) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+  });
+  canvas.addEventListener('pointercancel', endCropDrag);
+  canvas.addEventListener('pointerleave', endCropDrag);
+
+  $('cropApplyBtn').addEventListener('click', applyCrop);
+  $('cropDownloadBtn').addEventListener('click', downloadCrop);
+
+  $('cropEmptyHint').style.display = '';
+  $('cropResultHint').style.display = '';
+  $('cropApplyBtn').disabled = true;
+  $('cropDownloadBtn').disabled = true;
+  updateCropCoords();
+  setCropStatus('이미지를 선택하세요');
+}
+
 function init() {
   $('fileInput').addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
