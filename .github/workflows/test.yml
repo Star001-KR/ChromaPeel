@@ -4,14 +4,12 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'web/**'
       - 'docs/**'
       - '*.md'
       - 'LICENSE'
   pull_request:
     branches: [main]
     paths-ignore:
-      - 'web/**'
       - 'docs/**'
       - '*.md'
       - 'LICENSE'
@@ -46,3 +44,23 @@ jobs:
 
       - name: Run pytest
         run: pytest -v
+
+  web-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: JS syntax check
+        run: node --check web/app.js
+
+      - name: Install Playwright (chromium only)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.48.0
+          npx playwright install --with-deps chromium
+
+      - name: Run web boot smoke test
+        run: node tests/web_smoke.js
