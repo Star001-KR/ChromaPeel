@@ -35,12 +35,13 @@ Issues   = "https://github.com/Star001-KR/ChromaPeel/issues"
 
 [project.scripts]
 chromapeel-cli = "imageAlpha:_run_cli"
+chromapeel-split = "grid_split:_run_cli"
 
 [project.gui-scripts]
 chromapeel = "chromapeel_gui:main"
 
 [tool.setuptools]
-py-modules = ["imageAlpha", "chromapeel_gui", "clipboard_utils"]
+py-modules = ["imageAlpha", "chromapeel_gui", "clipboard_utils", "grid_split"]
 
 [tool.setuptools.dynamic]
 version = { attr = "imageAlpha.__version__" }

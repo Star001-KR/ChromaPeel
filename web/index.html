@@ -4,17 +4,35 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#1a1a1a" />
-  <title>ChromaPeel — 크로마 키 제거</title>
+  <title>ChromaPeel — 크로마 키 제거 / 격자 분할</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
+<body class="mode-chroma">
   <header class="topbar">
     <h1>ChromaPeel</h1>
-    <span class="subtitle">크로마 키 → 투명 PNG</span>
+    <span class="subtitle">크로마 키 → 투명 PNG · 격자 분할</span>
   </header>
 
+  <nav class="mode-switch" role="tablist" aria-label="작업 모드">
+    <button id="modeChromaBtn" class="mode-btn is-active" role="tab"
+            aria-selected="true" data-mode="chroma">크로마 제거</button>
+    <button id="modeGridBtn" class="mode-btn" role="tab"
+            aria-selected="false" data-mode="grid">격자 분할</button>
+  </nav>
+
   <main>
-    <section class="previews" aria-label="미리보기">
+    <!-- 공유: 파일 선택 -->
+    <section class="actions">
+      <label class="file-btn">
+        <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" />
+        <span>이미지 선택</span>
+      </label>
+      <button id="saveBtn" class="primary chroma-only" disabled>저장 / 공유</button>
+      <button id="splitBtn" class="primary grid-only" disabled>격자 분할 실행</button>
+    </section>
+
+    <!-- ==================== 크로마 제거 모드 ==================== -->
+    <section class="previews chroma-only" aria-label="미리보기">
       <figure class="preview">
         <figcaption>입력</figcaption>
         <div class="canvas-wrap">
@@ -32,15 +50,7 @@
       </figure>
     </section>
 
-    <section class="actions">
-      <label class="file-btn">
-        <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" />
-        <span>이미지 선택</span>
-      </label>
-      <button id="saveBtn" class="primary" disabled>저장 / 공유</button>
-    </section>
-
-    <section class="filename" aria-label="결과 파일명">
+    <section class="filename chroma-only" aria-label="결과 파일명">
       <label for="filenameInput">결과 파일명</label>
       <div class="filename-input">
         <input id="filenameInput" type="text" autocomplete="off"
@@ -49,7 +59,7 @@
       </div>
     </section>
 
-    <section class="params" aria-label="파라미터">
+    <section class="params chroma-only" aria-label="파라미터">
       <div class="row">
         <label for="colorPicker">대상 색상</label>
         <input id="colorPicker" type="color" value="#ff25ff" />
@@ -98,6 +108,55 @@
       <div class="row">
         <button id="resetBtn" class="ghost">기본값 복원</button>
       </div>
+    </section>
+
+    <!-- ==================== 격자 분할 모드 ==================== -->
+    <section class="grid-controls grid-only" aria-label="격자 분할 설정">
+      <div class="row">
+        <span class="row-label">분할 방식</span>
+        <label class="check">
+          <input type="radio" name="gridMode" id="gridModeRowsCols" value="rowsCols" checked />
+          Rows × Cols
+        </label>
+        <label class="check">
+          <input type="radio" name="gridMode" id="gridModeCellWH" value="cellWH" />
+          Cell W × H
+        </label>
+      </div>
+
+      <div class="row" data-grid-section="rowsCols">
+        <label for="gridRows">Rows</label>
+        <input id="gridRows" type="number" min="1" max="999" value="2" inputmode="numeric" />
+        <label for="gridCols">Cols</label>
+        <input id="gridCols" type="number" min="1" max="999" value="2" inputmode="numeric" />
+      </div>
+
+      <div class="row" data-grid-section="cellWH">
+        <label for="gridCellW">Cell W</label>
+        <input id="gridCellW" type="number" min="1" max="9999" value="64" inputmode="numeric" />
+        <label for="gridCellH">Cell H</label>
+        <input id="gridCellH" type="number" min="1" max="9999" value="64" inputmode="numeric" />
+      </div>
+
+      <p id="gridClipInfo" class="grid-clip-info">이미지를 선택하세요.</p>
+    </section>
+
+    <figure class="preview grid-only" aria-label="격자 미리보기">
+      <figcaption>미리보기</figcaption>
+      <div class="canvas-wrap">
+        <canvas id="gridPreviewCanvas"></canvas>
+        <p id="gridEmptyHint" class="empty-hint">
+          이미지를 선택하거나<br/>여기로 드래그하세요
+        </p>
+      </div>
+    </figure>
+
+    <section class="grid-results-section grid-only" aria-label="분할 결과">
+      <div class="grid-results-header">
+        <span id="gridResultCount" class="muted">결과 없음</span>
+        <button id="gridDownloadZipBtn" class="primary" disabled>전체 ZIP 다운로드</button>
+      </div>
+      <div id="gridResultsContainer" class="grid-results"></div>
     </section>
 
     <p id="status" class="status" role="status"></p>

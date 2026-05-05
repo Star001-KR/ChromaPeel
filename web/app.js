@@ -1,14 +1,17 @@
 // ChromaPeel — web version
-// Port of imageAlpha.py: 자동 배경 감지 + L∞ 거리 + Feather + Decontamination + Edge Erosion
+// 1) 크로마 제거 (imageAlpha.py 포팅): 자동 배경 감지 + L∞ 거리 + Feather + Decontamination + Edge Erosion
+// 2) 격자 분할 (grid_split.py 포팅): rows×cols / cell W×H 두 모드, 잔여 픽셀 clip, ZIP 일괄 다운로드
+// 의존성: 외부 라이브러리 없음 (vanilla JS, Store-mode ZIP 자체 구현)
 
 const $ = (id) => document.getElementById(id);
 
 const state = {
+  mode: 'chroma',  // 'chroma' | 'grid'
   sourceImageData: null,
   sourceFilename: null,
   processedBlob: null,
   processedURL: null,
-  // params
+  // chroma params
   autoDetect: false,
   targetColor: [255, 37, 255],
   tolerance: 20,
@@ -17,6 +20,13 @@ const state = {
   edgeErosion: 1,
   autoTrim: false,
   trimPadding: 0,
+  // grid params
+  gridSubMode: 'rowsCols',  // 'rowsCols' | 'cellWH'
+  gridRows: 2,
+  gridCols: 2,
+  gridCellW: 64,
+  gridCellH: 64,
+  gridResults: [],          // [{name, blob, url, row, col}]
 };
 
 // ---------- Algorithm ----------
@@ -252,12 +262,20 @@ function loadFile(file) {
     }
     state.sourceImageData = imageData;
 
+    // Chroma-mode setup (always runs so switching modes after load works)
     drawSourcePreview();
     if (state.autoDetect) syncAutoDetectUI();
     state.processedBlob = null;
     $('saveBtn').disabled = true;
-    schedule();
+    if (state.mode === 'chroma') schedule();
     $('emptyHint').style.display = 'none';
+
+    // Grid-mode setup
+    $('gridEmptyHint').style.display = 'none';
+    clearGridResults();
+    drawGridPreview();
+    updateGridControlsAvailability();
+
     setStatus(`${w}×${h} 로드됨`);
   };
   img.onerror = () => {
@@ -377,6 +395,404 @@ async function saveOrShare() {
   setStatus(`다운로드: ${filename}`);
 }
 
+// ---------- Grid split: geometry & filenames ----------
+
+function computeGrid(width, height) {
+  let cellW, cellH, rows, cols;
+  if (state.gridSubMode === 'rowsCols') {
+    rows = state.gridRows | 0;
+    cols = state.gridCols | 0;
+    if (rows <= 0 || cols <= 0) return { error: 'Rows / Cols는 1 이상이어야 합니다.' };
+    if (cols > width || rows > height) {
+      return { error: `이미지(${width}×${height})보다 행/열이 많습니다.` };
+    }
+    cellW = Math.floor(width / cols);
+    cellH = Math.floor(height / rows);
+  } else {
+    cellW = state.gridCellW | 0;
+    cellH = state.gridCellH | 0;
+    if (cellW <= 0 || cellH <= 0) return { error: 'Cell W / H는 1 이상이어야 합니다.' };
+    if (cellW > width || cellH > height) {
+      return { error: `셀(${cellW}×${cellH})이 이미지(${width}×${height})보다 큽니다.` };
+    }
+    rows = Math.floor(height / cellH);
+    cols = Math.floor(width / cellW);
+  }
+  if (cellW <= 0 || cellH <= 0 || rows <= 0 || cols <= 0) {
+    return { error: '유효한 격자를 만들 수 없습니다.' };
+  }
+  const clipW = width - cellW * cols;
+  const clipH = height - cellH * rows;
+  return { rows, cols, cellW, cellH, clipW, clipH };
+}
+
+function formatGridFilename(stem, row, col, maxDim) {
+  let pad = 1;
+  if (maxDim >= 100) pad = 3;
+  else if (maxDim >= 10) pad = 2;
+  const r = String(row).padStart(pad, '0');
+  const c = String(col).padStart(pad, '0');
+  return `${stem}_r${r}c${c}.png`;
+}
+
+function gridStem() {
+  const name = state.sourceFilename || 'image.png';
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  return sanitizeStem(stem) || 'image';
+}
+
+// ---------- Grid split: preview ----------
+
+const GRID_PREVIEW_MAX = 720;
+
+function drawGridPreview() {
+  const canvas = $('gridPreviewCanvas');
+  if (!state.sourceImageData) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = 0;
+    canvas.height = 0;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    updateGridClipInfo(null);
+    return;
+  }
+  const img = state.sourceImageData;
+  const W = img.width, H = img.height;
+  // Scale preview down if huge (for layout / line crispness)
+  const scale = Math.min(1, GRID_PREVIEW_MAX / Math.max(W, H));
+  const cw = Math.max(1, Math.round(W * scale));
+  const ch = Math.max(1, Math.round(H * scale));
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+
+  // Draw scaled source via temp canvas
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  tmp.getContext('2d').putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tmp, 0, 0, W, H, 0, 0, cw, ch);
+
+  const grid = computeGrid(W, H);
+  if (grid.error) {
+    updateGridClipInfo(grid);
+    return;
+  }
+
+  const sx = cw / W, sy = ch / H;
+
+  // Grid lines (red, dashed, 1px)
+  ctx.save();
+  ctx.strokeStyle = '#e63946';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  for (let c = 1; c < grid.cols; c++) {
+    const x = Math.round(c * grid.cellW * sx) + 0.5;
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, ch);
+  }
+  for (let r = 1; r < grid.rows; r++) {
+    const y = Math.round(r * grid.cellH * sy) + 0.5;
+    ctx.moveTo(0, y);
+    ctx.lineTo(cw, y);
+  }
+  ctx.stroke();
+  // Outer border (solid)
+  ctx.setLineDash([]);
+  const usedW = grid.cellW * grid.cols;
+  const usedH = grid.cellH * grid.rows;
+  ctx.strokeRect(0.5, 0.5, Math.round(usedW * sx) - 1, Math.round(usedH * sy) - 1);
+  ctx.restore();
+
+  // Clip overlay (grey 50% on right / bottom strip)
+  if (grid.clipW > 0 || grid.clipH > 0) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(80, 80, 80, 0.45)';
+    if (grid.clipW > 0) {
+      const x = Math.round(usedW * sx);
+      ctx.fillRect(x, 0, cw - x, ch);
+    }
+    if (grid.clipH > 0) {
+      const y = Math.round(usedH * sy);
+      const wRect = Math.round(usedW * sx);
+      ctx.fillRect(0, y, wRect, ch - y);
+    }
+    ctx.restore();
+  }
+
+  updateGridClipInfo(grid);
+}
+
+function updateGridClipInfo(grid) {
+  const el = $('gridClipInfo');
+  el.classList.remove('is-warning', 'is-error');
+  if (!state.sourceImageData) {
+    el.textContent = '이미지를 선택하세요.';
+    return;
+  }
+  if (!grid || grid.error) {
+    el.textContent = grid && grid.error ? grid.error : '격자를 계산할 수 없습니다.';
+    el.classList.add('is-error');
+    return;
+  }
+  const total = grid.rows * grid.cols;
+  let msg = `${grid.rows} × ${grid.cols} = ${total}장 · 셀 ${grid.cellW}×${grid.cellH}px`;
+  if (grid.clipW > 0 || grid.clipH > 0) {
+    msg += ` · 마지막 ${grid.clipW}×${grid.clipH}px가 잘려나감`;
+    el.classList.add('is-warning');
+  } else {
+    msg += ' · 정확히 나누어떨어짐';
+  }
+  el.textContent = msg;
+}
+
+function updateGridControlsAvailability() {
+  const isRC = state.gridSubMode === 'rowsCols';
+  $('gridRows').disabled = !isRC;
+  $('gridCols').disabled = !isRC;
+  $('gridCellW').disabled = isRC;
+  $('gridCellH').disabled = isRC;
+
+  const grid = state.sourceImageData
+    ? computeGrid(state.sourceImageData.width, state.sourceImageData.height)
+    : null;
+  $('splitBtn').disabled = !state.sourceImageData || !grid || !!grid.error;
+}
+
+// ---------- Grid split: execute ----------
+
+function clearGridResults() {
+  for (const r of state.gridResults) {
+    if (r.url) URL.revokeObjectURL(r.url);
+  }
+  state.gridResults = [];
+  $('gridResultsContainer').innerHTML = '';
+  $('gridResultCount').textContent = '결과 없음';
+  $('gridDownloadZipBtn').disabled = true;
+}
+
+async function runGridSplit() {
+  if (!state.sourceImageData) return;
+  const img = state.sourceImageData;
+  const grid = computeGrid(img.width, img.height);
+  if (grid.error) {
+    setStatus(grid.error);
+    return;
+  }
+  clearGridResults();
+  setStatus('격자 분할 중...');
+
+  const { rows, cols, cellW, cellH } = grid;
+  const stem = gridStem();
+  const maxDim = Math.max(rows, cols);
+
+  const tile = document.createElement('canvas');
+  tile.width = cellW;
+  tile.height = cellH;
+  const tctx = tile.getContext('2d');
+
+  const srcArr = img.data;
+  const srcW = img.width;
+  const rowBytes = cellW * 4;
+
+  const t0 = performance.now();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cellData = tctx.createImageData(cellW, cellH);
+      const dst = cellData.data;
+      for (let y = 0; y < cellH; y++) {
+        const srcOff = ((r * cellH + y) * srcW + c * cellW) * 4;
+        dst.set(srcArr.subarray(srcOff, srcOff + rowBytes), y * rowBytes);
+      }
+      tctx.putImageData(cellData, 0, 0);
+      // eslint-disable-next-line no-await-in-loop
+      const blob = await new Promise((resolve) =>
+        tile.toBlob(resolve, 'image/png')
+      );
+      if (!blob) continue;
+      const url = URL.createObjectURL(blob);
+      const name = formatGridFilename(stem, r, c, maxDim);
+      state.gridResults.push({ name, blob, url, row: r, col: c });
+    }
+  }
+  renderGridResults();
+  const dt = Math.round(performance.now() - t0);
+  setStatus(`분할 완료: ${state.gridResults.length}장 (${dt}ms)`);
+}
+
+function renderGridResults() {
+  const container = $('gridResultsContainer');
+  container.innerHTML = '';
+  if (state.gridResults.length === 0) {
+    $('gridResultCount').textContent = '결과 없음';
+    $('gridDownloadZipBtn').disabled = true;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const r of state.gridResults) {
+    const wrap = document.createElement('div');
+    wrap.className = 'grid-thumb';
+    const a = document.createElement('a');
+    a.href = r.url;
+    a.download = r.name;
+    a.title = `${r.name} 다운로드`;
+    const img = document.createElement('img');
+    img.className = 'thumb-img';
+    img.src = r.url;
+    img.alt = r.name;
+    img.loading = 'lazy';
+    const label = document.createElement('div');
+    label.className = 'thumb-name';
+    label.textContent = r.name;
+    a.appendChild(img);
+    wrap.appendChild(a);
+    wrap.appendChild(label);
+    frag.appendChild(wrap);
+  }
+  container.appendChild(frag);
+  $('gridResultCount').textContent = `${state.gridResults.length}장 · 클릭하여 개별 다운로드`;
+  $('gridDownloadZipBtn').disabled = false;
+}
+
+// ---------- ZIP builder (Store mode, no compression) ----------
+// PKZIP APPNOTE: local file header + central directory + EOCD.
+// 압축 없이 저장만 함 (PNG는 이미 압축됨). UTF-8 파일명 지원 (GPB flag bit 11).
+
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) {
+    c = CRC32_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+async function buildZip(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const data = new Uint8Array(await f.blob.arrayBuffer());
+    const nameBytes = encoder.encode(f.name);
+    const crc = crc32(data);
+    const size = data.length;
+
+    const lh = new ArrayBuffer(30 + nameBytes.length);
+    const lhV = new DataView(lh);
+    lhV.setUint32(0, 0x04034b50, true);
+    lhV.setUint16(4, 20, true);          // version needed
+    lhV.setUint16(6, 0x0800, true);      // GPB flag: UTF-8 filename
+    lhV.setUint16(8, 0, true);           // method: store
+    lhV.setUint16(10, 0, true);          // mod time
+    lhV.setUint16(12, 0x0021, true);     // mod date (1996-01-01)
+    lhV.setUint32(14, crc, true);
+    lhV.setUint32(18, size, true);       // compressed size
+    lhV.setUint32(22, size, true);       // uncompressed size
+    lhV.setUint16(26, nameBytes.length, true);
+    lhV.setUint16(28, 0, true);          // extra len
+    new Uint8Array(lh, 30).set(nameBytes);
+
+    parts.push(new Uint8Array(lh));
+    parts.push(data);
+
+    const ch = new ArrayBuffer(46 + nameBytes.length);
+    const chV = new DataView(ch);
+    chV.setUint32(0, 0x02014b50, true);
+    chV.setUint16(4, 20, true);          // version made by
+    chV.setUint16(6, 20, true);          // version needed
+    chV.setUint16(8, 0x0800, true);
+    chV.setUint16(10, 0, true);
+    chV.setUint16(12, 0, true);
+    chV.setUint16(14, 0x0021, true);
+    chV.setUint32(16, crc, true);
+    chV.setUint32(20, size, true);
+    chV.setUint32(24, size, true);
+    chV.setUint16(28, nameBytes.length, true);
+    chV.setUint16(30, 0, true);          // extra
+    chV.setUint16(32, 0, true);          // comment
+    chV.setUint16(34, 0, true);          // disk number
+    chV.setUint16(36, 0, true);          // internal attrs
+    chV.setUint32(38, 0, true);          // external attrs
+    chV.setUint32(42, offset, true);     // local header offset
+    new Uint8Array(ch, 46).set(nameBytes);
+    central.push(new Uint8Array(ch));
+
+    offset += 30 + nameBytes.length + size;
+  }
+
+  let centralSize = 0;
+  for (const c of central) centralSize += c.length;
+
+  const eocd = new ArrayBuffer(22);
+  const eV = new DataView(eocd);
+  eV.setUint32(0, 0x06054b50, true);
+  eV.setUint16(4, 0, true);
+  eV.setUint16(6, 0, true);
+  eV.setUint16(8, files.length, true);
+  eV.setUint16(10, files.length, true);
+  eV.setUint32(12, centralSize, true);
+  eV.setUint32(16, offset, true);
+  eV.setUint16(20, 0, true);
+
+  return new Blob([...parts, ...central, new Uint8Array(eocd)], {
+    type: 'application/zip',
+  });
+}
+
+async function downloadGridZip() {
+  if (state.gridResults.length === 0) return;
+  setStatus('ZIP 생성 중...');
+  const t0 = performance.now();
+  const blob = await buildZip(
+    state.gridResults.map((r) => ({ name: r.name, blob: r.blob }))
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${gridStem()}_split.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Defer revoke so the browser can start the download
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  const dt = Math.round(performance.now() - t0);
+  setStatus(`ZIP 다운로드 (${state.gridResults.length}장, ${dt}ms)`);
+}
+
+// ---------- Mode switch ----------
+
+function setMode(mode) {
+  if (mode !== 'chroma' && mode !== 'grid') return;
+  state.mode = mode;
+  document.body.classList.toggle('mode-chroma', mode === 'chroma');
+  document.body.classList.toggle('mode-grid', mode === 'grid');
+  $('modeChromaBtn').classList.toggle('is-active', mode === 'chroma');
+  $('modeGridBtn').classList.toggle('is-active', mode === 'grid');
+  $('modeChromaBtn').setAttribute('aria-selected', mode === 'chroma' ? 'true' : 'false');
+  $('modeGridBtn').setAttribute('aria-selected', mode === 'grid' ? 'true' : 'false');
+  if (mode === 'grid' && state.sourceImageData) {
+    drawGridPreview();
+    updateGridControlsAvailability();
+  }
+  if (mode === 'chroma' && state.sourceImageData && !state.processedBlob) {
+    schedule();
+  }
+}
+
 // ---------- Wire up controls ----------
 
 function bindRange(rangeId, valueId, key, parser) {
@@ -462,6 +878,55 @@ function init() {
   });
 
   $('saveBtn').addEventListener('click', saveOrShare);
+
+  // Mode switch
+  $('modeChromaBtn').addEventListener('click', () => setMode('chroma'));
+  $('modeGridBtn').addEventListener('click', () => setMode('grid'));
+
+  // Grid sub-mode (rows×cols vs cell W×H)
+  document.querySelectorAll('input[name="gridMode"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      if (el.checked) state.gridSubMode = el.value;
+      updateGridControlsAvailability();
+      drawGridPreview();
+    });
+  });
+
+  // Grid number inputs
+  const bindGridNum = (id, key, min, max) => {
+    const el = $(id);
+    const update = () => {
+      let v = parseInt(el.value, 10);
+      if (!Number.isFinite(v)) v = min;
+      if (v < min) v = min;
+      if (v > max) v = max;
+      state[key] = v;
+      drawGridPreview();
+      updateGridControlsAvailability();
+    };
+    el.addEventListener('input', update);
+    el.addEventListener('change', () => {
+      // Clamp visible value on blur/change
+      let v = parseInt(el.value, 10);
+      if (!Number.isFinite(v)) v = min;
+      if (v < min) v = min;
+      if (v > max) v = max;
+      el.value = String(v);
+      state[key] = v;
+      drawGridPreview();
+      updateGridControlsAvailability();
+    });
+  };
+  bindGridNum('gridRows', 'gridRows', 1, 999);
+  bindGridNum('gridCols', 'gridCols', 1, 999);
+  bindGridNum('gridCellW', 'gridCellW', 1, 9999);
+  bindGridNum('gridCellH', 'gridCellH', 1, 9999);
+
+  $('splitBtn').addEventListener('click', runGridSplit);
+  $('gridDownloadZipBtn').addEventListener('click', downloadGridZip);
+
+  // Initialise grid availability (disabled until image loaded)
+  updateGridControlsAvailability();
 
   setColorUI(state.targetColor);
   setStatus('PNG / JPG / WebP 이미지를 선택하거나 드래그하세요');

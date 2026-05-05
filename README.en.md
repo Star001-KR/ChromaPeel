@@ -32,6 +32,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 - **Auto-trim (optional)** — automatically crops the transparent outer area of the result via the alpha bbox (with optional padding)
 - **Continue on partial failure** — a single corrupt input no longer aborts the rest of the batch
 - Batch folder processing (CLI mode)
+- **Grid Split** — slice a sprite sheet into an N×M grid or fixed-size cells, saved as multiple PNGs (an independent tool, separate from chroma removal)
 
 ## Requirements
 
@@ -114,6 +115,47 @@ CLI flags:
 |------|-------------|
 | `--auto-trim` | Crop the transparent outer area using the alpha bbox just before saving |
 | `--trim-padding N` | Extra pixels added to each side of the `--auto-trim` bbox (default 0) |
+
+## Grid Split
+
+A standalone tool for slicing a single sprite sheet into multiple smaller PNGs. It runs as its own mode, independent from chroma removal, and accepts both RGBA and RGB inputs (alpha is preserved on output).
+
+### Two input modes
+
+1. **Rows × Cols mode** — specify the number of rows and columns and the image is split evenly. Integer division is used, so any leftover pixels at the last row/column are clipped (cropped and ignored).
+2. **Cell W × H mode** — specify the cell width and height in pixels and the image is sliced from the top-left, cell by cell. When the image size is not a clean multiple, the trailing row/column is discarded; the GUI and web UI display a "last X×Y px clipped" notice so the loss is visible.
+
+### Output filename convention
+
+- Pattern: `{stem}_r{row}c{col}.png` (row/col numbers are 0-indexed)
+- Output location: an `alpha/{stem}_split/` subfolder is created automatically.
+- **Zero-pad width** is sized to the digit count of `max(rows, cols)`:
+  - `max(rows, cols) < 10` → 1 digit, e.g. `cat_r0c0.png`
+  - `10 <= max(rows, cols) < 100` → 2 digits, e.g. `cat_r03c12.png`
+  - `max(rows, cols) >= 100` → 3 digits, e.g. `cat_r042c128.png`
+
+### CLI (`chromapeel-split`)
+
+After `pip install -e ".[dev]"`, the `chromapeel-split` console script is on your PATH.
+
+```bash
+# Rows × Cols mode: split evenly into 4 rows × 4 columns
+chromapeel-split input.png --rows 4 --cols 4
+
+# Cell W × H mode: slice top-left into 64×64 px cells
+chromapeel-split input.png --cell-w 64 --cell-h 64
+
+# Custom output folder: my_output/{stem}_split/{stem}_r0c0.png ...
+chromapeel-split input.png -o my_output/ --rows 2 --cols 3
+```
+
+### Desktop GUI
+
+Click the **[Grid Split]** button at the top of the main window to open a dedicated modal. Pick an image, choose the mode (Rows × Cols / Cell W × H), enter the numbers, and the preview overlays a grid. Hit **[Split]** and the result folder (`alpha/{stem}_split/`) opens automatically.
+
+### Web / Mobile
+
+The web build's main screen exposes a **mode switch** between "Chroma Remove" and "Grid Split". In Grid Split mode you upload an image, choose the mode and values, confirm the preview grid, click **[Split]**, and receive each tile as a thumbnail you can download individually — or use **[Download All as ZIP]** to grab everything at once.
 
 ## Parameters
 
