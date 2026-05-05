@@ -64,3 +64,6 @@ jobs:
 
       - name: Run web boot smoke test
         run: node tests/web_smoke.js
+
+      - name: Run web e2e tests
+        run: node tests/web_e2e.js

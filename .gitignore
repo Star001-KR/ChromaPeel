@@ -1,3 +1,6 @@
+# Node (web e2e tests install playwright into node_modules locally)
+node_modules/
+
 # Python
 .venv/
 __pycache__/
