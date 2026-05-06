@@ -290,3 +290,40 @@ def test_cli_subprocess_mode_b(tmp_path):
     assert "Saved 4 files" in proc.stdout
     assert (out_root / "image_split" / "image_r0c0.png").exists()
     assert (out_root / "image_split" / "image_r1c1.png").exists()
+
+
+# ---------- CLI --from-clipboard ----------
+
+def test_cli_from_clipboard_uses_clipboard_image(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "clipboard_utils.read_image_from_clipboard",
+        lambda: Image.new("RGB", (100, 60), (255, 255, 255)),
+    )
+
+    rc = grid_split._run_cli([
+        "--from-clipboard", "--rows", "2", "--cols", "2", "-o", "out",
+    ])
+    assert rc == 0
+
+    staged = list((tmp_path / "base").glob("clipboard_*.png"))
+    assert len(staged) == 1
+    split_dirs = list((tmp_path / "out").glob("clipboard_*_split"))
+    assert len(split_dirs) == 1
+    cells = list(split_dirs[0].glob("*.png"))
+    assert len(cells) == 4
+
+
+def test_cli_requires_input_or_clipboard(tmp_path, capsys):
+    with pytest.raises(SystemExit) as ei:
+        grid_split._run_cli(["--rows", "2", "--cols", "2"])
+    assert ei.value.code == 2
+
+
+def test_cli_rejects_both_input_and_clipboard(tmp_path):
+    in_p = _make_input(tmp_path, 100, 100)
+    with pytest.raises(SystemExit) as ei:
+        grid_split._run_cli([
+            str(in_p), "--from-clipboard", "--rows", "2", "--cols", "2",
+        ])
+    assert ei.value.code == 2

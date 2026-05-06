@@ -1,4 +1,5 @@
 """Unit tests for manual_crop — single-region rectangular crop."""
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -89,3 +90,34 @@ def test_out_dir_is_created_if_missing(tmp_path):
 
     assert target.is_dir()
     assert out.exists()
+
+
+# ---------- CLI --from-clipboard ----------
+
+def test_cli_from_clipboard_crops(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "clipboard_utils.read_image_from_clipboard",
+        lambda: Image.new("RGB", (50, 50), (200, 100, 50)),
+    )
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "chromapeel-crop", "--from-clipboard",
+        "--crop", "5,5,20,20",
+        "--out-dir", str(out_dir),
+    ])
+
+    manual_crop._run_cli()
+
+    cropped = list(out_dir.glob("clipboard_*_crop.png"))
+    assert len(cropped) == 1
+    img = Image.open(cropped[0])
+    assert img.size == (20, 20)
+
+
+def test_cli_requires_input_or_clipboard(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["chromapeel-crop", "--crop", "0,0,10,10"])
+    with pytest.raises(SystemExit) as ei:
+        manual_crop._run_cli()
+    assert ei.value.code == 2

@@ -2,9 +2,26 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from PIL import Image
+
+
+def _stage_clipboard_image(staging_dir: str = "base") -> Path:
+    from datetime import datetime
+    from clipboard_utils import read_image_from_clipboard
+
+    img = read_image_from_clipboard()
+    if img is None:
+        print("클립보드에 이미지가 없습니다.", file=sys.stderr)
+        sys.exit(1)
+    out_dir = Path(staging_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = out_dir / f"clipboard_{ts}.png"
+    img.save(out, "PNG")
+    return out
 
 
 def crop_image(
@@ -69,7 +86,11 @@ def _run_cli() -> None:
         prog="chromapeel-crop",
         description="이미지에서 직사각형 영역을 잘라냅니다.",
     )
-    parser.add_argument("input", help="입력 이미지 경로")
+    parser.add_argument("input", nargs="?", default=None, help="입력 이미지 경로")
+    parser.add_argument(
+        "--from-clipboard", action="store_true", dest="from_clipboard",
+        help="클립보드의 이미지를 base/ 에 저장한 뒤 크롭 입력으로 사용합니다.",
+    )
     parser.add_argument(
         "--crop",
         required=True,
@@ -83,6 +104,15 @@ def _run_cli() -> None:
         help='출력 폴더 (기본 "alpha")',
     )
     args = parser.parse_args()
+
+    input_set = args.input is not None
+    if args.from_clipboard and input_set:
+        parser.error("input과 --from-clipboard를 함께 지정할 수 없습니다")
+    if not args.from_clipboard and not input_set:
+        parser.error("input 또는 --from-clipboard 중 하나를 지정해야 합니다")
+
+    if args.from_clipboard:
+        args.input = str(_stage_clipboard_image("base"))
 
     x, y, w, h = args.crop
     out_file = crop_image(args.input, x, y, w, h, out_dir=args.out_dir)
