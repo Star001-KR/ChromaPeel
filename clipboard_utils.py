@@ -8,7 +8,36 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageGrab
+
+
+_CLIPBOARD_IMAGE_EXTS = {"png", "jpg", "jpeg", "bmp", "webp", "gif", "tiff"}
+
+
+def read_image_from_clipboard() -> Image.Image | None:
+    """시스템 클립보드에 있는 이미지를 PIL.Image 로 반환한다.
+
+    클립보드에 이미지가 없으면 None.
+
+    Win/Mac 은 PIL.ImageGrab.grabclipboard() 가 표준으로 동작.
+    Linux 는 Pillow 가 wl-paste/xclip 을 자동 fallback (사용자 환경에 따라 다름).
+    """
+    grabbed = ImageGrab.grabclipboard()
+    if grabbed is None:
+        return None
+    if isinstance(grabbed, Image.Image):
+        return grabbed
+    if isinstance(grabbed, list):
+        if not grabbed:
+            return None
+        first = grabbed[0]
+        ext = Path(first).suffix.lower().lstrip(".")
+        if ext in _CLIPBOARD_IMAGE_EXTS:
+            img = Image.open(first)
+            img.load()
+            return img
+        return None
+    return None
 
 
 def copy_image_to_clipboard(path: Path) -> None:
