@@ -4,6 +4,7 @@ import logging
 import shutil
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import colorchooser, messagebox, simpledialog, ttk
 
@@ -11,7 +12,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import imageAlpha
 from imageAlpha import __version__
-from clipboard_utils import copy_image_to_clipboard
+from clipboard_utils import copy_image_to_clipboard, read_image_from_clipboard
 
 from . import ALPHA_DIR, BASE_DIR, _open_path, _reveal_path
 from .dialogs import GridSplitDialog, ManualCropDialog
@@ -56,6 +57,9 @@ class ChromaPeelApp:
         self._refresh_inputs_from_disk()
         self._refresh_outputs_from_disk()
 
+        self.root.bind("<Control-v>", self._on_paste_shortcut)
+        self.root.bind("<Command-v>", self._on_paste_shortcut)
+
     def _build_ui(self):
         root = self.root
 
@@ -95,6 +99,8 @@ class ChromaPeelApp:
         btnrow.pack(fill="x")
         self.btn_clear = ttk.Button(btnrow, text="입력 비우기", command=self._clear_inputs)
         self.btn_clear.pack(side="left")
+        self.btn_paste = ttk.Button(btnrow, text="📋 붙여넣기", command=self._paste_from_clipboard)
+        self.btn_paste.pack(side="left", padx=(8, 0))
         self.btn_grid_split = ttk.Button(btnrow, text="격자 분할...", command=self._open_grid_split_dialog)
         self.btn_grid_split.pack(side="left", padx=(8, 0))
         self.btn_open_out = ttk.Button(btnrow, text="결과 폴더 열기", command=self._open_alpha_dir)
@@ -275,6 +281,38 @@ class ChromaPeelApp:
             return []
         return sorted(f for f in folder.iterdir() if f.is_file() and f.suffix.lower() == ".png")
 
+    def _on_paste_shortcut(self, event):
+        focused = self.root.focus_get()
+        if isinstance(focused, (tk.Entry, tk.Spinbox)):
+            return None
+        self._paste_from_clipboard()
+        return "break"
+
+    def _paste_from_clipboard(self) -> None:
+        if self.processing:
+            self._set_status("처리 중 — 클립보드 입력 무시")
+            return
+        try:
+            img = read_image_from_clipboard()
+        except Exception as e:
+            logger.warning("클립보드 읽기 실패", exc_info=True)
+            self._set_status(f"클립보드 읽기 실패: {e}")
+            return
+        if img is None:
+            self._set_status("클립보드에 이미지가 없습니다")
+            return
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        dest = BASE_DIR / f"clipboard_{ts}.png"
+        try:
+            img.save(dest, "PNG")
+        except Exception as e:
+            logger.warning("클립보드 이미지 저장 실패", exc_info=True)
+            self._set_status(f"클립보드 저장 실패: {e}")
+            messagebox.showerror("저장 실패", str(e))
+            return
+        self._refresh_inputs_from_disk()
+        self._set_status(f"클립보드에서 추가: {dest.name}")
+
     def _clear_inputs(self):
         if self.processing:
             return
@@ -329,6 +367,11 @@ class ChromaPeelApp:
             )
         if include_remove_input:
             menu.add_separator()
+            menu.add_command(
+                label="📋 클립보드에서 붙여넣기",
+                command=self._paste_from_clipboard,
+                state="disabled" if self.processing else "normal",
+            )
             menu.add_command(
                 label="크롭...",
                 command=lambda p=path: self._open_crop_dialog(p),
@@ -459,6 +502,7 @@ class ChromaPeelApp:
         self.processing = True
         self.btn_convert.configure(state="disabled", text=" 변환 중... ")
         self.btn_clear.configure(state="disabled")
+        self.btn_paste.configure(state="disabled")
         self.output_view.clear()
         self.output_view.show_placeholder("변환 중...")
         self.progress.configure(maximum=len(inputs), value=0)
@@ -512,6 +556,7 @@ class ChromaPeelApp:
         self.processing = False
         self.btn_convert.configure(state="normal", text="   변환   ")
         self.btn_clear.configure(state="normal")
+        self.btn_paste.configure(state="normal")
         if error is not None:
             self.progress.configure(value=0)
             self._set_status(f"오류: {error}")
