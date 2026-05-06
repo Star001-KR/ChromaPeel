@@ -22,6 +22,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 
 - **Desktop app (Win/Mac/Linux)** + **Web app (mobile / desktop browser)** — pick whichever fits the workflow
 - **Drag-and-drop GUI** — drag PNGs into the window to register them, click the button to convert, then drag the result thumbnails out to Explorer
+- **Clipboard image input** — paste images straight from the clipboard with `Ctrl/Cmd+V`, the "📋 Paste" button, or the right-click menu (CLI exposes a `--from-clipboard` flag; the web build uses a global `paste` listener plus an explicit Paste button)
 - **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / **(output) rename** / (input) remove
 - **Batch progress bar** — tracks N/M progress during multi-file conversion
 - **Background auto-detection (optional)** — one checkbox detects the background color from each image's border, so batches with mixed backgrounds work in a single pass
@@ -78,6 +79,14 @@ Run `run.bat` (Windows) or `./run.sh` (macOS / Linux) to launch the GUI.
 
 **Thumbnail actions**: double-click to open in your default image viewer; right-click for a menu with copy image to clipboard · copy file path · reveal in Explorer · **(output panel) Rename...** · (input panel) remove this input. Rename auto-appends `.png` and rejects characters that are illegal on Windows.
 
+**Clipboard input**: register an image copied from a screenshot tool / image editor straight into the input panel via any of three triggers:
+
+- Shortcut `Ctrl+V` (Win/Linux) / `Cmd+V` (macOS)
+- The **"📋 Paste"** button in the input panel's button row
+- The input-panel right-click menu **"📋 Paste from clipboard"**
+
+Pasted images are saved as `base/clipboard_YYYYMMDD_HHMMSS.png`. The same three triggers work inside the Grid Split and Manual Crop modals. If the clipboard does not hold an image, the status bar (main window) or an info dialog (modals) reports it.
+
 Expanding the "▸ Advanced Settings" toggle lets you adjust target color, tolerance, feather, edge erosion, decontaminate, and **auto-trim / padding** from the GUI. Enable the **"Auto-detect"** checkbox to skip manual color selection — the background color is extracted from each image's border instead. Enable **"Auto-trim"** to crop the result to the alpha bbox (with optional padding). Use "Reset to Defaults" to restore factory values at any time.
 
 > Internally, inputs are staged in `base/` and outputs are saved to `alpha/`. The "Open Result Folder" button opens `alpha/` in Explorer.
@@ -89,6 +98,7 @@ The static web build under `web/` runs in any modern browser with no install.
 - **Hosted** — pushes to `main` automatically deploy to GitHub Pages at `https://star001-kr.github.io/ChromaPeel/`. Enable *Pages → Source: GitHub Actions* once in repository settings to activate it.
 - **Local** — serve the `web/` folder with any static server, e.g. `python3 -m http.server -d web 8000`, then open `http://localhost:8000`.
 - **Mobile** — pick an image from your camera roll, tune the sliders with live preview, then tap **Save / Share** to push the transparent PNG to Photos, a chat app, etc.
+- **Clipboard input** — `Ctrl/Cmd+V` anywhere on the page (a global `paste` listener) or the **"📋 Paste"** button in the action row will use the clipboard image as the input for the active mode (Chroma Remove / Grid Split / Crop). The button calls `navigator.clipboard.read()` so the browser may show a permission prompt; some mobile browsers only support the paste event or do not support the Clipboard API at all, so it is best-effort (failures surface in the status area).
 - **Output filename** — auto-populates as `{stem}_alpha`; freely editable just before save.
 - **Image size cap** — images above ~16 MP (≈ 4096×4096) are rejected to protect mobile memory.
 
@@ -115,6 +125,7 @@ CLI flags:
 |------|-------------|
 | `--auto-trim` | Crop the transparent outer area using the alpha bbox just before saving |
 | `--trim-padding N` | Extra pixels added to each side of the `--auto-trim` bbox (default 0) |
+| `--from-clipboard` | Save the clipboard image as `base/clipboard_YYYYMMDD_HHMMSS.png` and process only that file (other files in `base/` are ignored) |
 
 ## Grid Split
 
@@ -147,6 +158,9 @@ chromapeel-split input.png --cell-w 64 --cell-h 64
 
 # Custom output folder: my_output/{stem}_split/{stem}_r0c0.png ...
 chromapeel-split input.png -o my_output/ --rows 2 --cols 3
+
+# Use the clipboard image as input (input_path and --from-clipboard are mutually exclusive — exactly one is required)
+chromapeel-split --from-clipboard --rows 2 --cols 2
 ```
 
 ### Desktop GUI
@@ -194,6 +208,9 @@ The `chromapeel-crop` console script takes the four box coordinates as a comma-s
 
 ```bash
 chromapeel-crop INPUT --crop X,Y,W,H
+
+# Use the clipboard image as input (INPUT and --from-clipboard are mutually exclusive — exactly one is required)
+chromapeel-crop --from-clipboard --crop 0,0,128,128
 ```
 
 - `X,Y`: top-left pixel coordinate of the box (image origin is `(0, 0)`)
