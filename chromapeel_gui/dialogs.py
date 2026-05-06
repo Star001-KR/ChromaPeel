@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -8,6 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
+from clipboard_utils import read_image_from_clipboard
 from grid_split import split_image_grid
 
 from . import ALPHA_DIR, _open_path
@@ -47,6 +50,11 @@ class GridSplitDialog(tk.Toplevel):
             v.trace_add("write", lambda *_: self._update_preview_overlay())
         self._update_mode_state()
 
+        self.bind("<Control-v>", self._on_paste_shortcut)
+        self.bind("<Command-v>", self._on_paste_shortcut)
+        self.canvas.bind("<Button-3>", self._show_clipboard_menu)
+        self.canvas.bind("<Button-2>", self._show_clipboard_menu)
+
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         # 부모 위에 모달로 표시.
         self.update_idletasks()
@@ -56,6 +64,9 @@ class GridSplitDialog(tk.Toplevel):
         file_row = ttk.Frame(self, padding=(10, 10, 10, 4))
         file_row.pack(fill="x")
         ttk.Button(file_row, text="이미지 선택...", command=self._select_image).pack(side="left")
+        ttk.Button(
+            file_row, text="📋 붙여넣기", command=self._paste_from_clipboard,
+        ).pack(side="left", padx=(8, 0))
         self.path_label = ttk.Label(file_row, text="(선택된 이미지 없음)", foreground="#888")
         self.path_label.pack(side="left", padx=8)
 
@@ -121,6 +132,59 @@ class GridSplitDialog(tk.Toplevel):
         self.btn_cancel.pack(side="right", padx=(0, 8))
         self.status_label = ttk.Label(btn_row, text="")
         self.status_label.pack(side="left")
+
+    def _on_paste_shortcut(self, event):
+        focused = self.focus_get()
+        if isinstance(focused, (tk.Entry, tk.Spinbox)):
+            return None
+        self._paste_from_clipboard()
+        return "break"
+
+    def _show_clipboard_menu(self, event) -> None:
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(
+            label="📋 클립보드에서 붙여넣기",
+            command=self._paste_from_clipboard,
+            state="disabled" if self.processing else "normal",
+        )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _paste_from_clipboard(self) -> None:
+        if self.processing:
+            return
+        try:
+            img = read_image_from_clipboard()
+        except Exception as e:
+            logger.warning("클립보드 읽기 실패", exc_info=True)
+            messagebox.showerror("클립보드 읽기 실패", str(e), parent=self)
+            return
+        if img is None:
+            messagebox.showinfo(
+                "클립보드 비어 있음", "클립보드에 이미지가 없습니다.", parent=self,
+            )
+            return
+        fd, tmp_path_str = tempfile.mkstemp(
+            suffix=".png", prefix="chromapeel_clip_",
+        )
+        os.close(fd)
+        tmp_path = Path(tmp_path_str)
+        try:
+            img.save(tmp_path, "PNG")
+        except Exception as e:
+            logger.warning("클립보드 이미지 저장 실패", exc_info=True)
+            messagebox.showerror("클립보드 저장 실패", str(e), parent=self)
+            return
+        self.image_path = tmp_path
+        self.image_size = img.size
+        display = str(tmp_path)
+        if len(display) > 60:
+            display = "..." + display[-57:]
+        self.path_label.configure(text=display, foreground="#000")
+        self._render_preview(img.copy())
+        self._update_preview_overlay()
 
     def _select_image(self) -> None:
         path_str = filedialog.askopenfilename(
@@ -363,14 +427,30 @@ class ManualCropDialog(tk.Toplevel):
 
     def __init__(self, parent, image_path: Path, on_complete=None):
         super().__init__(parent)
-        self.title(f"크롭 — {image_path.name}")
         self.transient(parent)
         self.resizable(False, False)
 
-        self.image_path = image_path
         self.on_complete = on_complete
 
-        self._pil_image = Image.open(image_path)
+        self._load_image_state(image_path)
+
+        self.box: tuple[float, float, float, float] | None = None
+        self._drag_mode: str | None = None
+        self._drag_start: tuple[float, float] | None = None
+        self._box_at_drag_start: tuple[float, float, float, float] | None = None
+        self._suppress_entry_sync = False
+
+        self._build_ui()
+        self.bind("<Control-v>", self._on_paste_shortcut)
+        self.bind("<Command-v>", self._on_paste_shortcut)
+        self.canvas.bind("<Button-3>", self._show_clipboard_menu)
+        self.canvas.bind("<Button-2>", self._show_clipboard_menu)
+        self.grab_set()
+        self.focus_set()
+
+    def _load_image_state(self, image_path: Path) -> None:
+        self.image_path = Path(image_path)
+        self._pil_image = Image.open(self.image_path)
         self.orig_w, self.orig_h = self._pil_image.size
 
         scale = min(
@@ -389,16 +469,7 @@ class ManualCropDialog(tk.Toplevel):
         else:
             disp_image = self._pil_image
         self._photo = ImageTk.PhotoImage(disp_image)
-
-        self.box: tuple[float, float, float, float] | None = None
-        self._drag_mode: str | None = None
-        self._drag_start: tuple[float, float] | None = None
-        self._box_at_drag_start: tuple[float, float, float, float] | None = None
-        self._suppress_entry_sync = False
-
-        self._build_ui()
-        self.grab_set()
-        self.focus_set()
+        self.title(f"크롭 — {self.image_path.name}")
 
     def _build_ui(self) -> None:
         outer = ttk.Frame(self, padding=8)
@@ -415,15 +486,23 @@ class ManualCropDialog(tk.Toplevel):
         right = ttk.Frame(outer)
         right.grid(row=0, column=1, sticky="n")
 
-        ttk.Label(
+        self.btn_paste = ttk.Button(
+            right, text="📋 클립보드 이미지 사용",
+            command=self._paste_from_clipboard,
+        )
+        self.btn_paste.pack(anchor="w", pady=(0, 8))
+
+        self.orig_label = ttk.Label(
             right, text=f"원본: {self.orig_w}×{self.orig_h}px",
             foreground="#666",
-        ).pack(anchor="w", pady=(0, 6))
+        )
+        self.orig_label.pack(anchor="w", pady=(0, 6))
+        self.scale_label = ttk.Label(
+            right, text=f"표시 비율: {self.scale * 100:.0f}%",
+            foreground="#888",
+        )
         if self.scale < 1.0:
-            ttk.Label(
-                right, text=f"표시 비율: {self.scale * 100:.0f}%",
-                foreground="#888",
-            ).pack(anchor="w", pady=(0, 8))
+            self.scale_label.pack(anchor="w", pady=(0, 8))
 
         self.x_var = tk.StringVar(value="0")
         self.y_var = tk.StringVar(value="0")
@@ -645,6 +724,74 @@ class ManualCropDialog(tk.Toplevel):
             self.canvas.configure(cursor="fleur")
         else:
             self.canvas.configure(cursor="crosshair")
+
+    # --- clipboard ---
+    def _on_paste_shortcut(self, event):
+        focused = self.focus_get()
+        if isinstance(focused, (tk.Entry, tk.Spinbox)):
+            return None
+        self._paste_from_clipboard()
+        return "break"
+
+    def _show_clipboard_menu(self, event) -> None:
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(
+            label="📋 클립보드에서 붙여넣기",
+            command=self._paste_from_clipboard,
+        )
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _paste_from_clipboard(self) -> None:
+        try:
+            img = read_image_from_clipboard()
+        except Exception as e:
+            logger.warning("클립보드 읽기 실패", exc_info=True)
+            messagebox.showerror("클립보드 읽기 실패", str(e), parent=self)
+            return
+        if img is None:
+            messagebox.showinfo(
+                "클립보드 비어 있음", "클립보드에 이미지가 없습니다.", parent=self,
+            )
+            return
+        fd, tmp_path_str = tempfile.mkstemp(
+            suffix=".png", prefix="chromapeel_clip_",
+        )
+        os.close(fd)
+        tmp_path = Path(tmp_path_str)
+        try:
+            img.save(tmp_path, "PNG")
+        except Exception as e:
+            logger.warning("클립보드 이미지 저장 실패", exc_info=True)
+            messagebox.showerror("클립보드 저장 실패", str(e), parent=self)
+            return
+        try:
+            self._replace_image(tmp_path)
+        except Exception as e:
+            logger.warning("이미지 교체 실패", exc_info=True)
+            messagebox.showerror("이미지 교체 실패", str(e), parent=self)
+
+    def _replace_image(self, image_path: Path) -> None:
+        self._load_image_state(image_path)
+        self.canvas.configure(width=self.disp_w, height=self.disp_h)
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor="nw", image=self._photo)
+        self.box = None
+        self._drag_mode = None
+        self._drag_start = None
+        self._box_at_drag_start = None
+        self._update_entries_from_box()
+        self.orig_label.configure(text=f"원본: {self.orig_w}×{self.orig_h}px")
+        self.scale_label.configure(text=f"표시 비율: {self.scale * 100:.0f}%")
+        if self.scale < 1.0:
+            if not self.scale_label.winfo_ismapped():
+                self.scale_label.pack(
+                    anchor="w", pady=(0, 8), after=self.orig_label,
+                )
+        else:
+            self.scale_label.pack_forget()
 
     # --- finish ---
     def _on_cancel(self) -> None:
