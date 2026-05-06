@@ -169,6 +169,23 @@ main {
 .file-btn input { display: none; }
 .file-btn:active { background: #eef0f5; }
 
+.paste-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+.paste-btn:active { background: #eef0f5; }
+
 button {
   font: inherit;
   min-height: 44px;
