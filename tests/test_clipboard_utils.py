@@ -13,7 +13,7 @@ import pytest
 from PIL import Image
 
 import clipboard_utils
-from clipboard_utils import copy_image_to_clipboard
+from clipboard_utils import copy_image_to_clipboard, read_image_from_clipboard
 
 
 def _make_png(path: Path) -> Path:
@@ -152,3 +152,50 @@ def test_linux_xclip_failure_raises(monkeypatch, tmp_path):
     )
     with pytest.raises(OSError, match="xclip"):
         clipboard_utils._copy_linux(src)
+
+
+# ---------- read_image_from_clipboard ----------
+
+def _patch_grabclipboard(monkeypatch, value):
+    monkeypatch.setattr(
+        clipboard_utils.ImageGrab, "grabclipboard", lambda: value
+    )
+
+
+def test_read_image_returns_pil_image_when_clipboard_has_image(monkeypatch):
+    fake = Image.new("RGB", (4, 4), (10, 20, 30))
+    _patch_grabclipboard(monkeypatch, fake)
+
+    result = read_image_from_clipboard()
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (4, 4)
+
+
+def test_read_image_returns_none_when_clipboard_empty(monkeypatch):
+    _patch_grabclipboard(monkeypatch, None)
+    assert read_image_from_clipboard() is None
+
+
+def test_read_image_returns_none_when_clipboard_has_text_or_unknown(monkeypatch):
+    _patch_grabclipboard(monkeypatch, [])
+    assert read_image_from_clipboard() is None
+
+    _patch_grabclipboard(monkeypatch, ["/some/path/document.txt"])
+    assert read_image_from_clipboard() is None
+
+
+def test_read_image_loads_first_image_when_clipboard_has_file_paths(monkeypatch, tmp_path):
+    png_path = tmp_path / "clip.png"
+    Image.new("RGB", (5, 7), (200, 100, 50)).save(png_path)
+    _patch_grabclipboard(monkeypatch, [str(png_path)])
+
+    result = read_image_from_clipboard()
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (5, 7)
+
+
+def test_read_image_returns_none_when_clipboard_returns_unsupported_type(monkeypatch):
+    _patch_grabclipboard(monkeypatch, 42)
+    assert read_image_from_clipboard() is None
