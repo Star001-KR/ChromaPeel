@@ -236,6 +236,23 @@ def process_folder(
             _emit(i, in_file, out_file, err)
 
 
+def _stage_clipboard_image(staging_dir: str = "base") -> Path:
+    import sys
+    from datetime import datetime
+    from clipboard_utils import read_image_from_clipboard
+
+    img = read_image_from_clipboard()
+    if img is None:
+        print("클립보드에 이미지가 없습니다.", file=sys.stderr)
+        sys.exit(1)
+    out_dir = Path(staging_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = out_dir / f"clipboard_{ts}.png"
+    img.save(out, "PNG")
+    return out
+
+
 def _run_cli() -> None:
     import argparse
 
@@ -247,7 +264,27 @@ def _run_cli() -> None:
                         help="저장 직전에 알파 bbox로 투명 외곽을 잘라냅니다.")
     parser.add_argument("--trim-padding", type=int, default=0, metavar="N",
                         help="--auto-trim bbox 사방으로 추가할 여유 픽셀 수 (기본 0).")
+    parser.add_argument("--from-clipboard", action="store_true", dest="from_clipboard",
+                        help="클립보드의 이미지를 base/ 에 저장한 뒤 그 파일만 처리합니다.")
     args = parser.parse_args()
+
+    if args.from_clipboard:
+        in_path = _stage_clipboard_image("base")
+        out_dir = Path("alpha")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / in_path.name
+        remove_color(
+            str(in_path), str(out_path),
+            target_color=(255, 37, 255),
+            tolerance=20,
+            feather=100,
+            decontaminate=True,
+            edge_erosion=1,
+            auto_trim=args.auto_trim,
+            trim_padding=args.trim_padding,
+        )
+        print(f"완료: {out_path.name}")
+        return
 
     def _cli_progress(i, total, in_path, out_path, error):
         name = Path(in_path).name
