@@ -7,4 +7,4 @@ if [ ! -x ".venv/bin/python" ]; then
     exit 1
 fi
 
-exec .venv/bin/python chromapeel_gui.py
+exec .venv/bin/python -m chromapeel_gui

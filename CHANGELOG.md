@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `process_folder` callback `index` now means "Nth completion", which in parallel mode no longer matches submission order. Pass `max_workers=1` to keep the old strict ordering.
 
+### Fixed
+- `run.bat` / `run.sh` now invoke `python -m chromapeel_gui` instead of the obsolete `chromapeel_gui.py` path that was orphaned by the package split (commit eb29222), which caused Windows `pythonw.exe` to silently fail. Added `chromapeel_gui/__main__.py`, an import precheck in `run.bat` so future module errors surface to the user instead of disappearing, and a `tests/test_gui_import.py` smoke test guarding the entry point.
+
 ## [0.1.0] - 2026-04-27
 
 ### Added
