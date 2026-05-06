@@ -1096,6 +1096,73 @@ function downloadCrop() {
   setCropStatus(`다운로드: ${filename}`);
 }
 
+// ---------- Clipboard input ----------
+// 두 가지 트리거: 전역 paste 이벤트 + "📋 붙여넣기" 버튼.
+// 활성 모드 (state.mode) 에 따라 chroma/grid 는 loadFile, crop 은 loadCropFile 로 라우팅.
+
+function statusForActiveMode(text) {
+  if (state.mode === 'crop') setCropStatus(text);
+  else setStatus(text);
+}
+
+function handleClipboardImage(blob) {
+  if (!blob) return;
+  const subtype = (blob.type && blob.type.split('/')[1]) || 'png';
+  const ext = subtype.split(';')[0] || 'png';
+  const ts = Date.now();
+  const file = new File([blob], `clipboard_${ts}.${ext}`, {
+    type: blob.type || 'image/png',
+  });
+  if (state.mode === 'crop') loadCropFile(file);
+  else loadFile(file);
+}
+
+function tryConsumeClipboardItems(items) {
+  if (!items) return false;
+  for (const item of items) {
+    if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
+      const blob = item.getAsFile();
+      if (blob) {
+        handleClipboardImage(blob);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+async function pasteFromClipboard() {
+  if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
+    statusForActiveMode('이 브라우저는 클립보드 이미지 읽기를 지원하지 않습니다.');
+    return;
+  }
+  let items;
+  try {
+    items = await navigator.clipboard.read();
+  } catch (err) {
+    if (err && err.name === 'NotAllowedError') {
+      statusForActiveMode('클립보드 접근 권한이 거부되었습니다.');
+    } else {
+      statusForActiveMode(`클립보드 읽기 실패: ${(err && err.message) || err}`);
+    }
+    return;
+  }
+  for (const item of items) {
+    const imageType = item.types.find((t) => t.startsWith('image/'));
+    if (imageType) {
+      try {
+        const blob = await item.getType(imageType);
+        handleClipboardImage(blob);
+        return;
+      } catch (err) {
+        statusForActiveMode(`클립보드 이미지 읽기 실패: ${(err && err.message) || err}`);
+        return;
+      }
+    }
+  }
+  statusForActiveMode('클립보드에 이미지가 없습니다.');
+}
+
 // ---------- Mode switch ----------
 
 function setMode(mode) {
@@ -1241,6 +1308,16 @@ function init() {
   });
 
   $('saveBtn').addEventListener('click', saveOrShare);
+
+  // Clipboard paste — global event + explicit buttons (both wired into the
+  // same active-mode-aware handler so chroma/grid/crop all work).
+  document.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    if (tryConsumeClipboardItems(items)) e.preventDefault();
+  });
+  $('pasteBtnChromaGrid').addEventListener('click', pasteFromClipboard);
+  $('pasteBtnCrop').addEventListener('click', pasteFromClipboard);
 
   // Mode switch
   $('modeChromaBtn').addEventListener('click', () => setMode('chroma'));
