@@ -128,12 +128,32 @@ def split_image_grid(
     }
 
 
+def _stage_clipboard_image(staging_dir: str = "base") -> Path:
+    from datetime import datetime
+    from clipboard_utils import read_image_from_clipboard
+
+    img = read_image_from_clipboard()
+    if img is None:
+        print("클립보드에 이미지가 없습니다.", file=sys.stderr)
+        sys.exit(1)
+    out_dir = Path(staging_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = out_dir / f"clipboard_{ts}.png"
+    img.save(out, "PNG")
+    return out
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="chromapeel-split",
         description="PNG 이미지를 균등 셀 격자로 분할합니다.",
     )
-    parser.add_argument("input_path", help="입력 PNG 경로")
+    parser.add_argument("input_path", nargs="?", default=None, help="입력 PNG 경로")
+    parser.add_argument(
+        "--from-clipboard", action="store_true", dest="from_clipboard",
+        help="클립보드의 이미지를 base/ 에 저장한 뒤 분할 입력으로 사용합니다.",
+    )
     parser.add_argument(
         "-o", "--output", default="alpha",
         help="출력 디렉토리 (기본: alpha). 내부에 {stem}_split/ 하위 폴더가 생성됩니다.",
@@ -155,6 +175,12 @@ def _run_cli(argv: Optional[List[str]] = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
 
+    input_set = args.input_path is not None
+    if args.from_clipboard and input_set:
+        parser.error("input_path와 --from-clipboard를 함께 지정할 수 없습니다")
+    if not args.from_clipboard and not input_set:
+        parser.error("input_path 또는 --from-clipboard 중 하나를 지정해야 합니다")
+
     a_set = args.rows is not None or args.cols is not None
     b_set = args.cell_w is not None or args.cell_h is not None
     if a_set and b_set:
@@ -165,6 +191,9 @@ def _run_cli(argv: Optional[List[str]] = None) -> int:
         parser.error("Mode A는 --rows와 --cols를 둘 다 지정해야 합니다")
     if b_set and (args.cell_w is None or args.cell_h is None):
         parser.error("Mode B는 --cell-w와 --cell-h를 둘 다 지정해야 합니다")
+
+    if args.from_clipboard:
+        args.input_path = str(_stage_clipboard_image("base"))
 
     stem = Path(args.input_path).stem
     out_dir = Path(args.output) / f"{stem}_split"

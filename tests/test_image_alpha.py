@@ -1,4 +1,5 @@
 """Unit tests for imageAlpha — algorithm correctness and folder workflow."""
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -344,3 +345,36 @@ def test_process_folder_propagates_auto_trim(tmp_path):
     )
     out = np.array(Image.open(out_dir / "a.png"))
     assert out.shape == (2, 2, 4)  # cropped to the 2x2 opaque region
+
+
+# ---------- CLI --from-clipboard ----------
+
+def test_cli_from_clipboard_stages_and_processes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "clipboard_utils.read_image_from_clipboard",
+        lambda: Image.new("RGB", (8, 8), (255, 37, 255)),
+    )
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--from-clipboard"])
+
+    imageAlpha._run_cli()
+
+    staged = list((tmp_path / "base").glob("clipboard_*.png"))
+    assert len(staged) == 1
+    processed = list((tmp_path / "alpha").glob("clipboard_*.png"))
+    assert len(processed) == 1
+    assert processed[0].name == staged[0].name
+    out = np.array(Image.open(processed[0]))
+    # Full magenta input → fully transparent after crop
+    assert (out[..., 3] == 0).all()
+
+
+def test_cli_from_clipboard_errors_when_empty(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("clipboard_utils.read_image_from_clipboard", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--from-clipboard"])
+
+    with pytest.raises(SystemExit) as ei:
+        imageAlpha._run_cli()
+    assert ei.value.code != 0
+    assert "클립보드" in capsys.readouterr().err
