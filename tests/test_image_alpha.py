@@ -378,3 +378,21 @@ def test_cli_from_clipboard_errors_when_empty(tmp_path, monkeypatch, capsys):
         imageAlpha._run_cli()
     assert ei.value.code != 0
     assert "클립보드" in capsys.readouterr().err
+
+
+def test_cli_from_clipboard_handles_pil_exception(tmp_path, monkeypatch, capsys):
+    """ImageGrab 예외도 traceback 없이 사용자 메시지로 종료 — 회귀 방지."""
+    monkeypatch.chdir(tmp_path)
+
+    def _raise():
+        raise OSError("xclip not installed")
+    import clipboard_utils
+    monkeypatch.setattr(clipboard_utils.ImageGrab, "grabclipboard", _raise)
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--from-clipboard"])
+
+    with pytest.raises(SystemExit) as ei:
+        imageAlpha._run_cli()
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "클립보드 읽기 실패" in err
+    assert "Traceback" not in err

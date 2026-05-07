@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
-import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -10,10 +8,10 @@ from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
-from clipboard_utils import read_image_from_clipboard
+from clipboard_utils import ClipboardImageError, stage_clipboard_image
 from grid_split import split_image_grid
 
-from . import ALPHA_DIR, _open_path
+from . import ALPHA_DIR, BASE_DIR, _open_path
 
 logger = logging.getLogger(__name__)
 
@@ -156,34 +154,30 @@ class GridSplitDialog(tk.Toplevel):
         if self.processing:
             return
         try:
-            img = read_image_from_clipboard()
-        except Exception as e:
-            logger.warning("클립보드 읽기 실패", exc_info=True)
-            messagebox.showerror("클립보드 읽기 실패", str(e), parent=self)
+            staged = stage_clipboard_image(BASE_DIR)
+        except ClipboardImageError as e:
+            messagebox.showinfo("클립보드", str(e), parent=self)
             return
-        if img is None:
-            messagebox.showinfo(
-                "클립보드 비어 있음", "클립보드에 이미지가 없습니다.", parent=self,
-            )
-            return
-        fd, tmp_path_str = tempfile.mkstemp(
-            suffix=".png", prefix="chromapeel_clip_",
-        )
-        os.close(fd)
-        tmp_path = Path(tmp_path_str)
-        try:
-            img.save(tmp_path, "PNG")
         except Exception as e:
             logger.warning("클립보드 이미지 저장 실패", exc_info=True)
             messagebox.showerror("클립보드 저장 실패", str(e), parent=self)
             return
-        self.image_path = tmp_path
-        self.image_size = img.size
-        display = str(tmp_path)
+        try:
+            with Image.open(staged) as img:
+                img.load()
+                size = img.size
+                preview_img = img.copy()
+        except Exception as e:
+            logger.warning("스테이징된 클립보드 이미지 열기 실패", exc_info=True)
+            messagebox.showerror("이미지 열기 실패", str(e), parent=self)
+            return
+        self.image_path = staged
+        self.image_size = size
+        display = str(staged)
         if len(display) > 60:
             display = "..." + display[-57:]
         self.path_label.configure(text=display, foreground="#000")
-        self._render_preview(img.copy())
+        self._render_preview(preview_img)
         self._update_preview_overlay()
 
     def _select_image(self) -> None:
@@ -746,29 +740,16 @@ class ManualCropDialog(tk.Toplevel):
 
     def _paste_from_clipboard(self) -> None:
         try:
-            img = read_image_from_clipboard()
-        except Exception as e:
-            logger.warning("클립보드 읽기 실패", exc_info=True)
-            messagebox.showerror("클립보드 읽기 실패", str(e), parent=self)
+            staged = stage_clipboard_image(BASE_DIR)
+        except ClipboardImageError as e:
+            messagebox.showinfo("클립보드", str(e), parent=self)
             return
-        if img is None:
-            messagebox.showinfo(
-                "클립보드 비어 있음", "클립보드에 이미지가 없습니다.", parent=self,
-            )
-            return
-        fd, tmp_path_str = tempfile.mkstemp(
-            suffix=".png", prefix="chromapeel_clip_",
-        )
-        os.close(fd)
-        tmp_path = Path(tmp_path_str)
-        try:
-            img.save(tmp_path, "PNG")
         except Exception as e:
             logger.warning("클립보드 이미지 저장 실패", exc_info=True)
             messagebox.showerror("클립보드 저장 실패", str(e), parent=self)
             return
         try:
-            self._replace_image(tmp_path)
+            self._replace_image(staged)
         except Exception as e:
             logger.warning("이미지 교체 실패", exc_info=True)
             messagebox.showerror("이미지 교체 실패", str(e), parent=self)

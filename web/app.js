@@ -1100,12 +1100,13 @@ function downloadCrop() {
 // 두 가지 트리거: 전역 paste 이벤트 + "📋 붙여넣기" 버튼.
 // 활성 모드 (state.mode) 에 따라 chroma/grid 는 loadFile, crop 은 loadCropFile 로 라우팅.
 
-function statusForActiveMode(text) {
-  if (state.mode === 'crop') setCropStatus(text);
+function statusForActiveMode(text, mode) {
+  const target = mode || state.mode;
+  if (target === 'crop') setCropStatus(text);
   else setStatus(text);
 }
 
-function handleClipboardImage(blob) {
+function handleClipboardImage(blob, mode) {
   if (!blob) return;
   const subtype = (blob.type && blob.type.split('/')[1]) || 'png';
   const ext = subtype.split(';')[0] || 'png';
@@ -1113,17 +1114,22 @@ function handleClipboardImage(blob) {
   const file = new File([blob], `clipboard_${ts}.${ext}`, {
     type: blob.type || 'image/png',
   });
-  if (state.mode === 'crop') loadCropFile(file);
+  // mode 는 paste 트리거 시점의 값을 잠가서 전달 받는다 — 사용자가 paste 진행 중에
+  // 모드를 토글해도 의도치 않은 모드로 라우팅되지 않게 한다.
+  const target = mode || state.mode;
+  if (target === 'crop') loadCropFile(file);
   else loadFile(file);
 }
 
 function tryConsumeClipboardItems(items) {
   if (!items) return false;
+  // paste 이벤트는 동기 path 라 race 우려 없음 — state.mode 그대로 전달.
+  const targetMode = state.mode;
   for (const item of items) {
     if (item.kind === 'file' && item.type && item.type.startsWith('image/')) {
       const blob = item.getAsFile();
       if (blob) {
-        handleClipboardImage(blob);
+        handleClipboardImage(blob, targetMode);
         return true;
       }
     }
@@ -1136,31 +1142,46 @@ async function pasteFromClipboard() {
     statusForActiveMode('이 브라우저는 클립보드 이미지 읽기를 지원하지 않습니다.');
     return;
   }
+  // 비동기 await 가 끼어들기 전에 현재 모드를 잠근다. 이후 사용자가 모드를 토글해도
+  // 본 paste 호출은 트리거 시점의 모드로 일관 라우팅된다.
+  const targetMode = state.mode;
   let items;
   try {
     items = await navigator.clipboard.read();
   } catch (err) {
     if (err && err.name === 'NotAllowedError') {
-      statusForActiveMode('클립보드 접근 권한이 거부되었습니다.');
+      statusForActiveMode('클립보드 접근 권한이 거부되었습니다.', targetMode);
     } else {
-      statusForActiveMode(`클립보드 읽기 실패: ${(err && err.message) || err}`);
+      statusForActiveMode(`클립보드 읽기 실패: ${(err && err.message) || err}`, targetMode);
     }
     return;
   }
+  // 한 item 안에 여러 image type 이 공존할 수 있고 (예: png + svg+xml),
+  // 또 여러 item 이 stage 될 수도 있다. 첫 매치만 시도하던 기존 구현은
+  // 부분 손상된 type 하나로 paste 전체가 실패하던 — 그래서 모든 후보를 시도.
+  let lastError = null;
+  let sawImage = false;
   for (const item of items) {
-    const imageType = item.types.find((t) => t.startsWith('image/'));
-    if (imageType) {
+    const imageTypes = item.types ? item.types.filter((t) => t.startsWith('image/')) : [];
+    for (const imageType of imageTypes) {
+      sawImage = true;
       try {
         const blob = await item.getType(imageType);
-        handleClipboardImage(blob);
+        handleClipboardImage(blob, targetMode);
         return;
       } catch (err) {
-        statusForActiveMode(`클립보드 이미지 읽기 실패: ${(err && err.message) || err}`);
-        return;
+        lastError = err;
       }
     }
   }
-  statusForActiveMode('클립보드에 이미지가 없습니다.');
+  if (sawImage && lastError) {
+    statusForActiveMode(
+      `클립보드 이미지 읽기 실패: ${(lastError && lastError.message) || lastError}`,
+      targetMode,
+    );
+  } else {
+    statusForActiveMode('클립보드에 이미지가 없습니다.', targetMode);
+  }
 }
 
 // ---------- Mode switch ----------

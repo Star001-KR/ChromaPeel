@@ -327,3 +327,25 @@ def test_cli_rejects_both_input_and_clipboard(tmp_path):
             str(in_p), "--from-clipboard", "--rows", "2", "--cols", "2",
         ])
     assert ei.value.code == 2
+
+
+def test_cli_clipboard_pil_exception_exits_cleanly(tmp_path, monkeypatch, capsys):
+    """ImageGrab.grabclipboard() 가 예외를 던지는 환경 (Linux wl-paste 미설치 등) 회귀.
+
+    이전에는 CLI 가 traceback 을 그대로 노출했음. 지금은 stderr 메시지 + exit(1).
+    """
+    monkeypatch.chdir(tmp_path)
+
+    def _raise():
+        raise OSError("wl-paste not installed")
+    import clipboard_utils
+    monkeypatch.setattr(clipboard_utils.ImageGrab, "grabclipboard", _raise)
+
+    with pytest.raises(SystemExit) as ei:
+        grid_split._run_cli([
+            "--from-clipboard", "--rows", "2", "--cols", "2", "-o", "out",
+        ])
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "클립보드 읽기 실패" in err
+    assert "Traceback" not in err

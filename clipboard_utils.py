@@ -6,12 +6,21 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageGrab
 
 
 _CLIPBOARD_IMAGE_EXTS = {"png", "jpg", "jpeg", "bmp", "webp", "gif", "tiff"}
+
+
+class ClipboardImageError(RuntimeError):
+    """stage_clipboard_image 호출자에게 사용자 안내를 위한 예외.
+
+    원인은 두 가지: 클립보드가 비어 있음, 또는 OS가 클립보드 읽기를 거부/실패.
+    CLI 호출자는 메시지를 stderr로 출력 후 종료, GUI는 messagebox 표시.
+    """
 
 
 def read_image_from_clipboard() -> Image.Image | None:
@@ -38,6 +47,29 @@ def read_image_from_clipboard() -> Image.Image | None:
             return img
         return None
     return None
+
+
+def stage_clipboard_image(staging_dir: str | Path = "base") -> Path:
+    """클립보드 이미지를 ``staging_dir`` 에 timestamped PNG 로 저장하고 경로 반환.
+
+    파일명은 ``clipboard_YYYYMMDD_HHMMSS_ffffff.png`` (마이크로초 포함). 같은 초에
+    두 번 호출되더라도 충돌하지 않는다.
+
+    실패 시 ``ClipboardImageError`` 를 raise — 클립보드가 비었거나, Linux 환경에서
+    wl-paste/xclip 미설치 등으로 ImageGrab.grabclipboard()가 예외를 던지는 경우.
+    """
+    try:
+        img = read_image_from_clipboard()
+    except Exception as e:
+        raise ClipboardImageError(f"클립보드 읽기 실패: {e}") from e
+    if img is None:
+        raise ClipboardImageError("클립보드에 이미지가 없습니다.")
+    out_dir = Path(staging_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    out = out_dir / f"clipboard_{ts}.png"
+    img.save(out, "PNG")
+    return out
 
 
 def copy_image_to_clipboard(path: Path) -> None:

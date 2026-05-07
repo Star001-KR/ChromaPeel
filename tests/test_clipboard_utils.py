@@ -13,7 +13,12 @@ import pytest
 from PIL import Image
 
 import clipboard_utils
-from clipboard_utils import copy_image_to_clipboard, read_image_from_clipboard
+from clipboard_utils import (
+    ClipboardImageError,
+    copy_image_to_clipboard,
+    read_image_from_clipboard,
+    stage_clipboard_image,
+)
 
 
 def _make_png(path: Path) -> Path:
@@ -199,3 +204,68 @@ def test_read_image_loads_first_image_when_clipboard_has_file_paths(monkeypatch,
 def test_read_image_returns_none_when_clipboard_returns_unsupported_type(monkeypatch):
     _patch_grabclipboard(monkeypatch, 42)
     assert read_image_from_clipboard() is None
+
+
+# ---------- stage_clipboard_image ----------
+
+def test_stage_writes_timestamped_png(monkeypatch, tmp_path):
+    """기본 동작: clipboard PIL 이미지를 staging_dir 에 PNG로 저장."""
+    _patch_grabclipboard(
+        monkeypatch, Image.new("RGB", (3, 4), (10, 20, 30)),
+    )
+    out = stage_clipboard_image(tmp_path / "stage")
+
+    assert out.is_file()
+    assert out.parent == tmp_path / "stage"
+    assert out.name.startswith("clipboard_")
+    assert out.suffix == ".png"
+    img = Image.open(out)
+    assert img.size == (3, 4)
+
+
+def test_stage_uses_microseconds_to_avoid_collision(monkeypatch, tmp_path):
+    """동일 초에 두 번 호출되어도 파일명 충돌이 없어야 한다 (마이크로초 포함).
+
+    회귀 방지: 이전에 grid_split/manual_crop/imageAlpha 가 각각 ``%Y%m%d_%H%M%S``
+    (초 단위) 만 사용하여 같은 초에 두 번 호출 시 덮어쓰기 위험이 있었다.
+    """
+    monkeypatch.setattr(
+        clipboard_utils.ImageGrab, "grabclipboard",
+        lambda: Image.new("RGB", (2, 2), (255, 0, 0)),
+    )
+    out1 = stage_clipboard_image(tmp_path)
+    out2 = stage_clipboard_image(tmp_path)
+
+    assert out1 != out2
+    assert out1.exists() and out2.exists()
+
+
+def test_stage_raises_clipboard_image_error_when_empty(monkeypatch, tmp_path):
+    _patch_grabclipboard(monkeypatch, None)
+    with pytest.raises(ClipboardImageError, match="이미지가 없습니다"):
+        stage_clipboard_image(tmp_path)
+
+
+def test_stage_wraps_pil_exception_as_clipboard_image_error(monkeypatch, tmp_path):
+    """PIL.ImageGrab.grabclipboard() 가 예외를 던지는 시나리오 (Linux wl-paste 미설치 등).
+
+    회귀 방지: CLI 가 ``--from-clipboard`` 를 처리할 때 traceback 을 그대로 노출
+    하지 않고 사용자 친화 메시지로 변환해야 한다.
+    """
+    def _raise():
+        raise OSError("wl-paste not installed")
+    monkeypatch.setattr(clipboard_utils.ImageGrab, "grabclipboard", _raise)
+
+    with pytest.raises(ClipboardImageError, match="클립보드 읽기 실패"):
+        stage_clipboard_image(tmp_path)
+
+
+def test_stage_creates_missing_directory(monkeypatch, tmp_path):
+    _patch_grabclipboard(monkeypatch, Image.new("RGB", (1, 1), (0, 0, 0)))
+    target = tmp_path / "deep" / "nested" / "stage"
+    assert not target.exists()
+
+    out = stage_clipboard_image(target)
+
+    assert target.is_dir()
+    assert out.is_file()

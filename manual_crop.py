@@ -9,19 +9,14 @@ from PIL import Image
 
 
 def _stage_clipboard_image(staging_dir: str = "base") -> Path:
-    from datetime import datetime
-    from clipboard_utils import read_image_from_clipboard
+    """CLI 진입점에서 호출. 실패 시 사용자 메시지 출력 후 sys.exit(1)."""
+    from clipboard_utils import ClipboardImageError, stage_clipboard_image
 
-    img = read_image_from_clipboard()
-    if img is None:
-        print("클립보드에 이미지가 없습니다.", file=sys.stderr)
+    try:
+        return stage_clipboard_image(staging_dir)
+    except ClipboardImageError as e:
+        print(str(e), file=sys.stderr)
         sys.exit(1)
-    out_dir = Path(staging_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out = out_dir / f"clipboard_{ts}.png"
-    img.save(out, "PNG")
-    return out
 
 
 def crop_image(

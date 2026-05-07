@@ -121,3 +121,23 @@ def test_cli_requires_input_or_clipboard(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as ei:
         manual_crop._run_cli()
     assert ei.value.code == 2
+
+
+def test_cli_clipboard_pil_exception_exits_cleanly(tmp_path, monkeypatch, capsys):
+    """ImageGrab 예외 시 traceback 이 아닌 사용자 메시지 + exit(1) — 회귀 방지."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "chromapeel-crop", "--from-clipboard", "--crop", "0,0,10,10",
+    ])
+
+    def _raise():
+        raise OSError("xclip not installed")
+    import clipboard_utils
+    monkeypatch.setattr(clipboard_utils.ImageGrab, "grabclipboard", _raise)
+
+    with pytest.raises(SystemExit) as ei:
+        manual_crop._run_cli()
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "클립보드 읽기 실패" in err
+    assert "Traceback" not in err
