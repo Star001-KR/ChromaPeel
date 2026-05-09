@@ -1137,6 +1137,21 @@ function tryConsumeClipboardItems(items) {
   return false;
 }
 
+// blob 이 실제로 디코딩 가능한 이미지인지 동기적으로 검증.
+// 미지원 환경에선 true (검증 skip — 기존 동작과 동일).
+// pasteFromClipboard 의 fallback chain 이 손상된 type 하나로 멈추지 않도록,
+// loadFile 의 비동기 img.onerror 이전에 여기서 한 번 가린다.
+async function decodeBlobIsImage(blob) {
+  if (!blob || typeof createImageBitmap !== 'function') return Boolean(blob);
+  try {
+    const bitmap = await createImageBitmap(blob);
+    if (bitmap && typeof bitmap.close === 'function') bitmap.close();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function pasteFromClipboard() {
   if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') {
     statusForActiveMode('이 브라우저는 클립보드 이미지 읽기를 지원하지 않습니다.');
@@ -1158,20 +1173,27 @@ async function pasteFromClipboard() {
   }
   // 한 item 안에 여러 image type 이 공존할 수 있고 (예: png + svg+xml),
   // 또 여러 item 이 stage 될 수도 있다. 첫 매치만 시도하던 기존 구현은
-  // 부분 손상된 type 하나로 paste 전체가 실패하던 — 그래서 모든 후보를 시도.
+  // 부분 손상된 type 하나로 paste 전체가 실패했고, getType() 성공만 본 직전 구현은
+  // 비동기 디코드 실패 시 다음 후보를 시도하지 못했다 — 그래서 createImageBitmap
+  // 으로 디코드 가능 여부를 사전 검증하고, 검증 실패 시 다음 후보로 넘어간다.
   let lastError = null;
   let sawImage = false;
   for (const item of items) {
     const imageTypes = item.types ? item.types.filter((t) => t.startsWith('image/')) : [];
     for (const imageType of imageTypes) {
       sawImage = true;
+      let blob;
       try {
-        const blob = await item.getType(imageType);
-        handleClipboardImage(blob, targetMode);
-        return;
+        blob = await item.getType(imageType);
       } catch (err) {
         lastError = err;
+        continue;
       }
+      if (await decodeBlobIsImage(blob)) {
+        handleClipboardImage(blob, targetMode);
+        return;
+      }
+      lastError = new Error(`디코드 실패: ${imageType}`);
     }
   }
   if (sawImage && lastError) {

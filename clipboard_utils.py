@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -14,13 +15,22 @@ from PIL import Image, ImageGrab
 
 _CLIPBOARD_IMAGE_EXTS = {"png", "jpg", "jpeg", "bmp", "webp", "gif", "tiff"}
 
+# uuid suffix 가 같은 마이크로초에 또 같은 4자 hex 로 떨어질 확률은 1/65536.
+# 그래도 보수적으로 몇 번 retry — 단일 디렉토리에서 사실상 마주칠 일 없는 경계.
+_STAGE_MAX_ATTEMPTS = 5
+
 
 class ClipboardImageError(RuntimeError):
     """stage_clipboard_image 호출자에게 사용자 안내를 위한 예외.
 
-    원인은 두 가지: 클립보드가 비어 있음, 또는 OS가 클립보드 읽기를 거부/실패.
-    CLI 호출자는 메시지를 stderr로 출력 후 종료, GUI는 messagebox 표시.
+    원인: 클립보드가 비었음, OS가 클립보드 읽기를 거부, 스테이징 디렉토리 생성/
+    파일 저장 실패. CLI 호출자는 메시지를 stderr로 출력 후 종료, GUI는 messagebox.
     """
+
+
+def _now_timestamp() -> str:
+    """파일명용 timestamp 문자열. 테스트에서 monkeypatch 해 충돌 시나리오 강제 가능."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
 
 def read_image_from_clipboard() -> Image.Image | None:
@@ -50,13 +60,14 @@ def read_image_from_clipboard() -> Image.Image | None:
 
 
 def stage_clipboard_image(staging_dir: str | Path = "base") -> Path:
-    """클립보드 이미지를 ``staging_dir`` 에 timestamped PNG 로 저장하고 경로 반환.
+    """클립보드 이미지를 ``staging_dir`` 에 PNG 로 저장하고 경로 반환.
 
-    파일명은 ``clipboard_YYYYMMDD_HHMMSS_ffffff.png`` (마이크로초 포함). 같은 초에
-    두 번 호출되더라도 충돌하지 않는다.
+    파일명은 ``clipboard_YYYYMMDD_HHMMSS_ffffff_xxxx.png`` — 마이크로초 timestamp +
+    uuid4 4자 hex suffix. 동일 마이크로초에 두 번 호출되더라도 suffix 가 거의 확실히
+    다르고, 만의 하나 동일하더라도 ``exists()`` 체크로 한 번 더 retry.
 
-    실패 시 ``ClipboardImageError`` 를 raise — 클립보드가 비었거나, Linux 환경에서
-    wl-paste/xclip 미설치 등으로 ImageGrab.grabclipboard()가 예외를 던지는 경우.
+    실패 시 ``ClipboardImageError`` raise — 클립보드 비었음, ImageGrab 예외
+    (wl-paste/xclip 미설치 등), 디렉토리 생성/저장 권한 부족, 디스크 풀 모두 포함.
     """
     try:
         img = read_image_from_clipboard()
@@ -65,11 +76,22 @@ def stage_clipboard_image(staging_dir: str | Path = "base") -> Path:
     if img is None:
         raise ClipboardImageError("클립보드에 이미지가 없습니다.")
     out_dir = Path(staging_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    out = out_dir / f"clipboard_{ts}.png"
-    img.save(out, "PNG")
-    return out
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ClipboardImageError(f"스테이징 폴더 생성 실패: {e}") from e
+    for _ in range(_STAGE_MAX_ATTEMPTS):
+        ts = _now_timestamp()
+        suffix = uuid.uuid4().hex[:4]
+        out = out_dir / f"clipboard_{ts}_{suffix}.png"
+        if out.exists():
+            continue
+        try:
+            img.save(out, "PNG")
+        except OSError as e:
+            raise ClipboardImageError(f"이미지 저장 실패: {e}") from e
+        return out
+    raise ClipboardImageError("스테이징 파일명 충돌이 반복되어 포기")
 
 
 def copy_image_to_clipboard(path: Path) -> None:

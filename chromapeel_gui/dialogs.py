@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import tempfile
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -11,9 +13,20 @@ from PIL import Image, ImageTk
 from clipboard_utils import ClipboardImageError, stage_clipboard_image
 from grid_split import split_image_grid
 
-from . import ALPHA_DIR, BASE_DIR, _open_path
+from . import ALPHA_DIR, _open_path
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_clip_tempdir(tempdir: Path | None) -> None:
+    """dialog 의 클립보드 staging tempdir 을 통째로 제거.
+
+    GridSplit/ManualCrop dialog 가 paste 한 PNG 를 BASE_DIR 에 누수시키지 않도록,
+    paste 시 dialog 별 tempdir 을 만들고 dialog ``destroy`` 시 이 함수로 정리한다.
+    """
+    if tempdir is None:
+        return
+    shutil.rmtree(tempdir, ignore_errors=True)
 
 
 class GridSplitDialog(tk.Toplevel):
@@ -35,6 +48,8 @@ class GridSplitDialog(tk.Toplevel):
         self._preview_offset: tuple[int, int] = (0, 0)
         self._preview_scale: float = 1.0
         self.processing = False
+        # paste 한 클립보드 PNG 의 격리 staging dir. dialog 종료 시 통째로 정리된다.
+        self._clip_tempdir: Path | None = None
 
         self.mode = tk.StringVar(value="rowcol")
         self.rows = tk.IntVar(value=2)
@@ -153,8 +168,10 @@ class GridSplitDialog(tk.Toplevel):
     def _paste_from_clipboard(self) -> None:
         if self.processing:
             return
+        if self._clip_tempdir is None:
+            self._clip_tempdir = Path(tempfile.mkdtemp(prefix="chromapeel_clip_"))
         try:
-            staged = stage_clipboard_image(BASE_DIR)
+            staged = stage_clipboard_image(self._clip_tempdir)
         except ClipboardImageError as e:
             messagebox.showinfo("클립보드", str(e), parent=self)
             return
@@ -179,6 +196,13 @@ class GridSplitDialog(tk.Toplevel):
         self.path_label.configure(text=display, foreground="#000")
         self._render_preview(preview_img)
         self._update_preview_overlay()
+
+    def destroy(self) -> None:
+        # destroy 는 _on_cancel/_on_split_done/WM_DELETE 모두의 공통 종료 path.
+        # 클립보드 tempdir 은 여기서 한 번에 정리한다 — base/ 누수 회귀 방지.
+        _cleanup_clip_tempdir(self._clip_tempdir)
+        self._clip_tempdir = None
+        super().destroy()
 
     def _select_image(self) -> None:
         path_str = filedialog.askopenfilename(
@@ -425,6 +449,10 @@ class ManualCropDialog(tk.Toplevel):
         self.resizable(False, False)
 
         self.on_complete = on_complete
+        # _load_image_state 가 이전 _pil_image 를 close 하기 위해 None 으로 미리 둔다.
+        self._pil_image: Image.Image | None = None
+        # paste 한 클립보드 PNG 의 격리 staging dir. dialog 종료 시 통째로 정리.
+        self._clip_tempdir: Path | None = None
 
         self._load_image_state(image_path)
 
@@ -443,6 +471,14 @@ class ManualCropDialog(tk.Toplevel):
         self.focus_set()
 
     def _load_image_state(self, image_path: Path) -> None:
+        # 이전 paste/load 의 PIL handle 이 살아 있으면 먼저 close — 그렇지 않으면
+        # Windows 에서 staging tempdir 이 file lock 으로 삭제 실패할 수 있다.
+        old = self._pil_image
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                logger.debug("이전 PIL 이미지 close 실패", exc_info=True)
         self.image_path = Path(image_path)
         self._pil_image = Image.open(self.image_path)
         self.orig_w, self.orig_h = self._pil_image.size
@@ -739,8 +775,10 @@ class ManualCropDialog(tk.Toplevel):
             menu.grab_release()
 
     def _paste_from_clipboard(self) -> None:
+        if self._clip_tempdir is None:
+            self._clip_tempdir = Path(tempfile.mkdtemp(prefix="chromapeel_clip_"))
         try:
-            staged = stage_clipboard_image(BASE_DIR)
+            staged = stage_clipboard_image(self._clip_tempdir)
         except ClipboardImageError as e:
             messagebox.showinfo("클립보드", str(e), parent=self)
             return
@@ -775,6 +813,19 @@ class ManualCropDialog(tk.Toplevel):
             self.scale_label.pack_forget()
 
     # --- finish ---
+    def destroy(self) -> None:
+        # _on_cancel/_on_confirm 모두 self.destroy() 로 수렴하므로 여기서
+        # tempdir 과 PIL handle 을 한 번에 정리한다.
+        if self._pil_image is not None:
+            try:
+                self._pil_image.close()
+            except Exception:
+                logger.debug("PIL 이미지 close 실패", exc_info=True)
+            self._pil_image = None
+        _cleanup_clip_tempdir(self._clip_tempdir)
+        self._clip_tempdir = None
+        super().destroy()
+
     def _on_cancel(self) -> None:
         try:
             self.grab_release()

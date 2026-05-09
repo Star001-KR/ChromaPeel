@@ -269,3 +269,57 @@ def test_stage_creates_missing_directory(monkeypatch, tmp_path):
 
     assert target.is_dir()
     assert out.is_file()
+
+
+def test_stage_avoids_collision_when_timestamp_is_identical(monkeypatch, tmp_path):
+    """동일 마이크로초 timestamp 가 강제돼도 두 파일이 충돌 없이 생성된다.
+
+    회귀 방지: 이전 구현은 ``%Y%m%d_%H%M%S_%f`` 단독 의존 — 동일 마이크로초 두
+    호출 시 덮어쓰기 위험이 있었다. uuid suffix + ``exists()`` retry 로 보강했고
+    여기서는 monkeypatch 로 timestamp 를 고정해 그 보강을 강제 검증한다.
+    """
+    _patch_grabclipboard(monkeypatch, Image.new("RGB", (2, 2), (0, 255, 0)))
+    monkeypatch.setattr(
+        clipboard_utils, "_now_timestamp", lambda: "20260509_030918_123456",
+    )
+
+    out1 = stage_clipboard_image(tmp_path)
+    out2 = stage_clipboard_image(tmp_path)
+
+    assert out1 != out2
+    assert out1.exists() and out2.exists()
+    # 두 파일 모두 같은 timestamp prefix 를 갖되 uuid suffix 가 다르다.
+    assert out1.name.startswith("clipboard_20260509_030918_123456_")
+    assert out2.name.startswith("clipboard_20260509_030918_123456_")
+
+
+def test_stage_wraps_save_failure_as_clipboard_image_error(monkeypatch, tmp_path):
+    """img.save 가 OSError 를 던지면 ClipboardImageError 로 래핑된다.
+
+    회귀 방지: 이전 구현은 mkdir/save 를 try 블록 밖에 두어 디스크 풀, 권한 부족
+    등에서 CLI 가 traceback 을 그대로 노출했다. 지금은 save 실패도 사용자 친화
+    메시지로 변환된다.
+    """
+    fake_image = Image.new("RGB", (1, 1), (255, 255, 255))
+
+    def _failing_save(self, *args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(Image.Image, "save", _failing_save)
+    _patch_grabclipboard(monkeypatch, fake_image)
+
+    with pytest.raises(ClipboardImageError, match="이미지 저장 실패"):
+        stage_clipboard_image(tmp_path)
+
+
+def test_stage_wraps_mkdir_failure_as_clipboard_image_error(monkeypatch, tmp_path):
+    """mkdir 권한 부족 등 OSError 도 ClipboardImageError 로 래핑된다."""
+    _patch_grabclipboard(monkeypatch, Image.new("RGB", (1, 1)))
+
+    def _failing_mkdir(self, *args, **kwargs):
+        raise PermissionError("Permission denied")
+
+    monkeypatch.setattr(Path, "mkdir", _failing_mkdir)
+
+    with pytest.raises(ClipboardImageError, match="스테이징 폴더 생성 실패"):
+        stage_clipboard_image(tmp_path / "blocked")
