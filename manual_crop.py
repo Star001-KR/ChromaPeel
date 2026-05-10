@@ -111,7 +111,7 @@ def _run_cli() -> None:
 
     x, y, w, h = args.crop
     out_file = crop_image(args.input, x, y, w, h, out_dir=args.out_dir)
-    print(f"saved: {out_file}")
+    print(f"완료: {out_file}")
 
 
 if __name__ == "__main__":

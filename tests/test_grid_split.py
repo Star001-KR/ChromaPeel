@@ -257,10 +257,10 @@ def test_cli_mode_a_success(tmp_path, capsys):
 
     assert rc == 0
     captured = capsys.readouterr()
-    assert "Saved 4 files" in captured.out
-    assert "Grid: 2x2" in captured.out
-    assert "cell: 50x50px" in captured.out
-    assert "Clipped: 0x0px" in captured.out
+    assert "완료: 4개 파일" in captured.out
+    assert "격자: 2×2" in captured.out
+    assert "셀: 50×50px" in captured.out
+    assert "잔여: 0×0px" in captured.out
     # CLI nests output under {out_root}/{stem}_split/.
     assert (out_root / "image_split" / "image_r0c0.png").exists()
 
@@ -287,7 +287,7 @@ def test_cli_subprocess_mode_b(tmp_path):
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert "Saved 4 files" in proc.stdout
+    assert "완료: 4개 파일" in proc.stdout
     assert (out_root / "image_split" / "image_r0c0.png").exists()
     assert (out_root / "image_split" / "image_r1c1.png").exists()
 

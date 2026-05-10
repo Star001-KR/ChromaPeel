@@ -211,10 +211,10 @@ def _run_cli(argv: Optional[List[str]] = None) -> int:
 
     cw, ch = result["clipped"]
     print(
-        f"Saved {len(result['files'])} files to {out_dir}. "
-        f"Grid: {result['rows']}x{result['cols']}, "
-        f"cell: {result['cell_w']}x{result['cell_h']}px. "
-        f"Clipped: {cw}x{ch}px."
+        f"완료: {len(result['files'])}개 파일을 {out_dir} 에 저장했습니다. "
+        f"격자: {result['rows']}×{result['cols']}, "
+        f"셀: {result['cell_w']}×{result['cell_h']}px. "
+        f"잔여: {cw}×{ch}px."
     )
     return 0
 
