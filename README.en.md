@@ -258,10 +258,21 @@ ChromaPeel/
 ├── requirements.txt         # Dependency list for the auto-setup scripts
 ├── setup.bat / setup.sh     # Auto-install scripts (Windows / macOS·Linux)
 ├── run.bat / run.sh         # One-click GUI launchers (Windows / macOS·Linux)
-├── web/                     # Mobile / browser web build (vanilla JS + Canvas)
+├── web/                     # Mobile / browser web build (vanilla JS ESM + Canvas)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js               #   Chroma + grid-split + crop + ZIP builder
+│   ├── package.json         #   {"type": "module"} — node treats web/*.js as ESM
+│   ├── main.js              #   Entry point — DOMContentLoaded → init*()
+│   ├── algorithm.js         #   Chroma-key algorithm core (Python parity)
+│   ├── chroma.js            #   Chroma mode (loadFile, saveOrShare, ...)
+│   ├── grid.js              #   Grid-split mode (drawGridPreview, runGridSplit, ...)
+│   ├── crop.js              #   Manual-crop mode (drag/resize, applyCrop, ...)
+│   ├── clipboard.js         #   Global paste + 📋 button routing
+│   ├── mode.js              #   Tab switch (chroma / grid / crop)
+│   ├── zip.js               #   Store-mode ZIP builder
+│   ├── state.js             #   Shared chroma + grid state (singleton)
+│   ├── dom.js               #   $ helper · setStatus / setCropStatus
+│   └── util.js              #   Filename sanitisation
 ├── tests/                   # pytest + JS parity + Playwright web tests
 │   ├── conftest.py
 │   ├── test_image_alpha.py
@@ -270,7 +281,8 @@ ChromaPeel/
 │   ├── test_clipboard_utils.py
 │   ├── test_gui_import.py
 │   ├── test_js_parity.py
-│   ├── js_parity_runner.js  #   Python↔JS byte-parity runner
+│   ├── js_parity_runner.mjs #   Python↔JS byte-parity runner (imports algorithm.js)
+│   ├── _web_server.js       #   Ephemeral http server for smoke / e2e (ESM blocked under file://)
 │   ├── web_smoke.js         #   Web boot smoke test (Playwright)
 │   └── web_e2e.js           #   Web golden-path e2e (Playwright)
 ├── .github/workflows/

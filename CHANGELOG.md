@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Web frontend modularised. The 1422-LOC `web/app.js` is split into 12 ESM
+  modules (`algorithm` · `zip` · `state` · `dom` · `util` · `chroma` · `grid`
+  · `crop` · `clipboard` · `mode` · `main`, plus `package.json` declaring
+  `{"type": "module"}`). Largest module is now 354 LOC (`crop.js`). All
+  cross-module dependencies are unidirectional; `state` is a singleton via
+  ESM module identity. `<script>` switched to `type="module"`; entry point
+  renamed `app.js` → `main.js`.
+- JS parity runner converted to native ESM (`tests/js_parity_runner.js` →
+  `.mjs`) and now imports `web/algorithm.js` directly. The 24-line DOM
+  shim block is gone — the runner only polyfills `ImageData`.
+- Web smoke and e2e tests now serve `web/` over an ephemeral
+  `http://127.0.0.1:<port>/` (helper at `tests/_web_server.js`) since
+  Chromium blocks ESM under `file://` due to CORS.
+- CI `node --check` widened from `web/app.js` to `web/*.js`.
+
 ## [0.2.0] - 2026-05-10
 
 ### Added

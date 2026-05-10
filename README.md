@@ -319,10 +319,21 @@ ChromaPeel/
 ├── requirements.txt         # 자동 setup 스크립트용 의존성 목록
 ├── setup.bat / setup.sh     # 자동 설치 스크립트 (Windows / macOS·Linux)
 ├── run.bat / run.sh         # GUI 원클릭 실행 (Windows / macOS·Linux)
-├── web/                     # 모바일/브라우저용 웹 버전 (vanilla JS + Canvas)
+├── web/                     # 모바일/브라우저용 웹 버전 (vanilla JS ESM + Canvas)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js               #   크로마 제거 + 격자 분할 + 크롭 + ZIP 빌더
+│   ├── package.json         #   {"type": "module"} — node 가 ESM 으로 인식
+│   ├── main.js              #   진입점 — DOMContentLoaded → init*()
+│   ├── algorithm.js         #   크로마 키 알고리즘 코어 (Python parity)
+│   ├── chroma.js            #   크로마 모드 (loadFile, saveOrShare, ...)
+│   ├── grid.js              #   격자 분할 모드 (drawGridPreview, runGridSplit, ...)
+│   ├── crop.js              #   수동 크롭 모드 (drag/resize, applyCrop, ...)
+│   ├── clipboard.js         #   전역 paste + 📋 버튼 라우팅
+│   ├── mode.js              #   탭 전환 (chroma / grid / crop)
+│   ├── zip.js               #   Store-mode ZIP 빌더
+│   ├── state.js             #   chroma + grid 공유 state (싱글턴)
+│   ├── dom.js               #   $ helper · setStatus / setCropStatus
+│   └── util.js              #   파일명 sanitisation
 ├── tests/                   # pytest + JS 패리티 + Playwright 웹 테스트
 │   ├── conftest.py
 │   ├── test_image_alpha.py
@@ -331,7 +342,8 @@ ChromaPeel/
 │   ├── test_clipboard_utils.py
 │   ├── test_gui_import.py
 │   ├── test_js_parity.py
-│   ├── js_parity_runner.js  #   Python↔JS 바이트 패리티 러너
+│   ├── js_parity_runner.mjs #   Python↔JS 바이트 패리티 러너 (algorithm.js 직접 import)
+│   ├── _web_server.js       #   smoke / e2e 용 ephemeral http 서버 (ESM 은 file:// 차단)
 │   ├── web_smoke.js         #   웹 부트 smoke 테스트 (Playwright)
 │   └── web_e2e.js           #   웹 골든 패스 e2e (Playwright)
 ├── .github/workflows/
@@ -368,6 +380,6 @@ pytest tests/test_js_parity.py -v   # node 필요
 ```
 
 - **`pytest` (Python 단위)** — `tests/test_image_alpha.py`, `tests/test_grid_split.py`, `tests/test_manual_crop.py` 등 알고리즘/CLI 동작을 검증합니다.
-- **JS↔Python 패리티** — `tests/test_js_parity.py` 가 `tests/js_parity_runner.js` 를 `node` 로 실행해 웹 버전과 Python 코어가 동일한 PNG 바이트를 생성하는지 비교합니다. `node` 가 PATH에 없으면 해당 케이스는 자동 스킵됩니다.
+- **JS↔Python 패리티** — `tests/test_js_parity.py` 가 `tests/js_parity_runner.mjs` 를 `node` 로 실행해 웹 버전과 Python 코어가 동일한 PNG 바이트를 생성하는지 비교합니다. 러너는 `web/algorithm.js` 를 ESM 으로 직접 import 하므로 DOM shim 없이 진짜 알고리즘만 검증됩니다. `node` 가 PATH에 없으면 해당 케이스는 자동 스킵됩니다.
 
 모든 푸시·PR은 GitHub Actions에서 Ubuntu / Windows / macOS × Python 3.8 / 3.10 / 3.12 매트릭스로 자동 검증됩니다.
