@@ -137,7 +137,7 @@ def test_rgba_alpha_is_preserved(tmp_path):
     # Vary alpha by row so we can detect any silent flattening.
     for y in range(10):
         arr[y, :, 3] = y * 25
-    Image.fromarray(arr, mode="RGBA").save(in_p, "PNG")
+    Image.fromarray(arr).save(in_p, "PNG")
 
     out_dir = tmp_path / "out"
     result = grid_split.split_image_grid(
