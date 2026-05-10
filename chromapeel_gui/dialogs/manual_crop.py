@@ -85,7 +85,7 @@ class ManualCropDialog(ClipboardPasteMixin, tk.Toplevel):
 
         if scale < 1.0:
             disp_image = self._pil_image.resize(
-                (self.disp_w, self.disp_h), Image.LANCZOS
+                (self.disp_w, self.disp_h), Image.Resampling.LANCZOS
             )
         else:
             disp_image = self._pil_image
