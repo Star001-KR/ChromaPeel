@@ -1,28 +1,9 @@
-// ChromaPeel — web entry point.
-//
-// 알고리즘 / 유틸리티 / 모드 코어는 algorithm.js · zip.js · state.js · util.js
-// · chroma.js · grid.js · crop.js 로 분리되어 있다. 이 파일은 init() 에서 각
-// 모듈의 init*() 를 호출하고 clipboard 라우팅 + 모드 전환 wire-up 만 담당한다
-// (Phase 4 에서 clipboard.js / mode.js / main.js 로 더 분리 예정).
-
+// Clipboard input — global paste event + "📋 붙여넣기" 버튼.
+// 활성 모드 (state.mode) 에 따라 chroma/grid 는 loadFile, crop 은 loadCropFile 로 라우팅.
 import { state } from './state.js';
 import { $, setStatus, setCropStatus } from './dom.js';
-import { initChroma, loadFile, schedule } from './chroma.js';
-import {
-  initGrid,
-  drawGridPreview,
-  updateGridControlsAvailability,
-} from './grid.js';
-import {
-  initCrop,
-  loadCropFile,
-  drawCropCanvas,
-  cropState,
-} from './crop.js';
-
-// ---------- Clipboard input ----------
-// 두 가지 트리거: 전역 paste 이벤트 + "📋 붙여넣기" 버튼.
-// 활성 모드 (state.mode) 에 따라 chroma/grid 는 loadFile, crop 은 loadCropFile 로 라우팅.
+import { loadFile } from './chroma.js';
+import { loadCropFile } from './crop.js';
 
 function statusForActiveMode(text, mode) {
   const target = mode || state.mode;
@@ -130,40 +111,7 @@ async function pasteFromClipboard() {
   }
 }
 
-// ---------- Mode switch ----------
-
-function setMode(mode) {
-  if (mode !== 'chroma' && mode !== 'grid' && mode !== 'crop') return;
-  state.mode = mode;
-  document.body.classList.toggle('mode-chroma', mode === 'chroma');
-  document.body.classList.toggle('mode-grid', mode === 'grid');
-  document.body.classList.toggle('mode-crop', mode === 'crop');
-  $('modeChromaBtn').classList.toggle('is-active', mode === 'chroma');
-  $('modeGridBtn').classList.toggle('is-active', mode === 'grid');
-  $('modeCropBtn').classList.toggle('is-active', mode === 'crop');
-  $('modeChromaBtn').setAttribute('aria-selected', mode === 'chroma' ? 'true' : 'false');
-  $('modeGridBtn').setAttribute('aria-selected', mode === 'grid' ? 'true' : 'false');
-  $('modeCropBtn').setAttribute('aria-selected', mode === 'crop' ? 'true' : 'false');
-  if (mode === 'grid' && state.sourceImageData) {
-    drawGridPreview();
-    updateGridControlsAvailability();
-  }
-  if (mode === 'chroma' && state.sourceImageData && !state.processedBlob) {
-    schedule();
-  }
-  if (mode === 'crop' && cropState.image) {
-    drawCropCanvas();
-  }
-}
-
-// ---------- Init ----------
-
-function init() {
-  initChroma();
-  initGrid();
-  initCrop();
-
-  // Clipboard paste — global event + explicit buttons (active-mode-aware).
+export function initClipboard() {
   document.addEventListener('paste', (e) => {
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
@@ -171,11 +119,4 @@ function init() {
   });
   $('pasteBtnChromaGrid').addEventListener('click', pasteFromClipboard);
   $('pasteBtnCrop').addEventListener('click', pasteFromClipboard);
-
-  // Mode switch
-  $('modeChromaBtn').addEventListener('click', () => setMode('chroma'));
-  $('modeGridBtn').addEventListener('click', () => setMode('grid'));
-  $('modeCropBtn').addEventListener('click', () => setMode('crop'));
 }
-
-document.addEventListener('DOMContentLoaded', init);
