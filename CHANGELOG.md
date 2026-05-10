@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modernise typing in `imageAlpha.py` and `grid_split.py` to PEP 585 native
   generics (`list[X]`, `tuple[X, Y]`); `from typing import List, Tuple` is
   removed. `Optional` and `Callable` are retained for clarity.
+- Split the 879-LOC `chromapeel_gui/dialogs.py` into a `dialogs/` subpackage:
+  `_clipboard.py` (the new `ClipboardPasteMixin` consolidating the duplicated
+  paste-trigger / tempdir-cleanup boilerplate), `grid_split.py`
+  (GridSplitDialog), `manual_crop.py` (ManualCropDialog), and `__init__.py`
+  re-exporting the public symbols. External import path is unchanged
+  (`from chromapeel_gui.dialogs import GridSplitDialog, ManualCropDialog`
+  still works).
 - Web frontend modularised. The 1422-LOC `web/app.js` is split into 12 ESM
   modules (`algorithm` · `zip` · `state` · `dom` · `util` · `chroma` · `grid`
   · `crop` · `clipboard` · `mode` · `main`, plus `package.json` declaring

@@ -252,7 +252,11 @@ ChromaPeel/
 │   ├── __init__.py          #   Package constants (BASE_DIR, ALPHA_DIR) + platform helpers
 │   ├── __main__.py          #   `python -m chromapeel_gui` entry point
 │   ├── app.py               #   Main window / conversion workflow
-│   ├── dialogs.py           #   Grid-split / manual-crop modals
+│   ├── dialogs/             #   Grid-split / manual-crop modal package
+│   │   ├── __init__.py      #     re-export (preserves external import path)
+│   │   ├── _clipboard.py    #     ClipboardPasteMixin (paste triggers + tempdir isolation)
+│   │   ├── grid_split.py    #     GridSplitDialog
+│   │   └── manual_crop.py   #     ManualCropDialog
 │   └── widgets.py           #   Thumbnail grid widget
 ├── pyproject.toml           # PEP 621 metadata (registers 4 console scripts)
 ├── requirements.txt         # Dependency list for the auto-setup scripts

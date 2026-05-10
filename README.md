@@ -313,7 +313,11 @@ ChromaPeel/
 │   ├── __init__.py          #   패키지 상수(BASE_DIR, ALPHA_DIR) + 플랫폼 헬퍼
 │   ├── __main__.py          #   `python -m chromapeel_gui` 진입점
 │   ├── app.py               #   메인 윈도우 / 변환 워크플로우
-│   ├── dialogs.py           #   격자 분할 / 수동 크롭 모달
+│   ├── dialogs/             #   격자 분할 / 수동 크롭 모달 패키지
+│   │   ├── __init__.py      #     re-export (외부 import 경로 호환)
+│   │   ├── _clipboard.py    #     ClipboardPasteMixin (paste 트리거 + tempdir 격리)
+│   │   ├── grid_split.py    #     GridSplitDialog
+│   │   └── manual_crop.py   #     ManualCropDialog
 │   └── widgets.py           #   썸네일 그리드 위젯
 ├── pyproject.toml           # PEP 621 메타데이터 (콘솔 스크립트 4종 등록)
 ├── requirements.txt         # 자동 setup 스크립트용 의존성 목록
