@@ -302,24 +302,43 @@ chromapeel-crop --from-clipboard --crop 0,0,128,128
 
 ```
 ChromaPeel/
-├── .venv/              # Python 가상환경 (git 추적 제외)
-├── base/               # 입력 이미지 폴더 (GUI 드롭 시 자동 스테이징)
-├── alpha/              # 출력 이미지 폴더
-├── chromapeel_gui.py   # GUI 엔트리 (Tkinter + tkinterdnd2)
-├── clipboard_utils.py  # 이미지 클립보드 복사 (Win ctypes / mac osascript / Linux xclip·wl-copy)
-├── imageAlpha.py       # 처리 로직 (CLI 모드로도 실행 가능)
-├── requirements.txt    # Python 의존성
-├── setup.bat / setup.sh  # 자동 설치 스크립트 (Windows / macOS·Linux)
-├── run.bat / run.sh      # GUI 원클릭 실행 (Windows / macOS·Linux)
-├── web/                  # 모바일/브라우저용 웹 버전 (vanilla JS + Canvas)
+├── .venv/                   # Python 가상환경 (git 추적 제외)
+├── base/                    # 입력 이미지 폴더 (GUI 드롭/클립보드 자동 스테이징)
+├── alpha/                   # 출력 이미지 폴더
+├── imageAlpha.py            # 크로마 키 제거 코어 + chromapeel-cli 진입점
+├── grid_split.py            # 격자 분할 코어 + chromapeel-split 진입점
+├── manual_crop.py           # 수동 크롭 코어 + chromapeel-crop 진입점
+├── clipboard_utils.py       # 클립보드 read/copy/staging (Win ctypes / mac osascript / Linux xclip·wl-copy)
+├── chromapeel_gui/          # 데스크톱 Tkinter GUI 패키지
+│   ├── __init__.py          #   패키지 상수(BASE_DIR, ALPHA_DIR) + 플랫폼 헬퍼
+│   ├── __main__.py          #   `python -m chromapeel_gui` 진입점
+│   ├── app.py               #   메인 윈도우 / 변환 워크플로우
+│   ├── dialogs.py           #   격자 분할 / 수동 크롭 모달
+│   └── widgets.py           #   썸네일 그리드 위젯
+├── pyproject.toml           # PEP 621 메타데이터 (콘솔 스크립트 4종 등록)
+├── requirements.txt         # 자동 setup 스크립트용 의존성 목록
+├── setup.bat / setup.sh     # 자동 설치 스크립트 (Windows / macOS·Linux)
+├── run.bat / run.sh         # GUI 원클릭 실행 (Windows / macOS·Linux)
+├── web/                     # 모바일/브라우저용 웹 버전 (vanilla JS + Canvas)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js
-├── tests/                # pytest + JS 패리티 테스트
+│   └── app.js               #   크로마 제거 + 격자 분할 + 크롭 + ZIP 빌더
+├── tests/                   # pytest + JS 패리티 + Playwright 웹 테스트
+│   ├── conftest.py
 │   ├── test_image_alpha.py
+│   ├── test_grid_split.py
+│   ├── test_manual_crop.py
+│   ├── test_clipboard_utils.py
+│   ├── test_gui_import.py
 │   ├── test_js_parity.py
-│   └── js_parity_runner.js
-├── .github/workflows/deploy-web.yml  # GitHub Pages 자동 배포
+│   ├── js_parity_runner.js  #   Python↔JS 바이트 패리티 러너
+│   ├── web_smoke.js         #   웹 부트 smoke 테스트 (Playwright)
+│   └── web_e2e.js           #   웹 골든 패스 e2e (Playwright)
+├── .github/workflows/
+│   ├── test.yml             #   3 OS × 3 Python 매트릭스 + 웹 e2e
+│   └── deploy-web.yml       #   GitHub Pages 자동 배포
+├── CHANGELOG.md
+├── LICENSE
 └── .gitignore
 ```
 

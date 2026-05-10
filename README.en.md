@@ -241,24 +241,43 @@ Only single-region cropping is supported today; multi-region selection is left a
 
 ```
 ChromaPeel/
-├── .venv/              # Python virtual environment (git-ignored)
-├── base/               # Input folder (auto-staged on GUI drop)
-├── alpha/              # Output folder
-├── chromapeel_gui.py   # GUI entry (Tkinter + tkinterdnd2)
-├── clipboard_utils.py  # Clipboard image copy (Win ctypes / mac osascript / Linux xclip·wl-copy)
-├── imageAlpha.py       # Processing logic (also runs in CLI mode)
-├── requirements.txt    # Python dependencies
-├── setup.bat / setup.sh  # Auto-install scripts (Windows / macOS·Linux)
-├── run.bat / run.sh      # One-click GUI launchers (Windows / macOS·Linux)
-├── web/                  # Mobile / browser web build (vanilla JS + Canvas)
+├── .venv/                   # Python virtual environment (git-ignored)
+├── base/                    # Input folder (auto-staged on GUI drop / paste)
+├── alpha/                   # Output folder
+├── imageAlpha.py            # Chroma-key core + chromapeel-cli entry point
+├── grid_split.py            # Grid-split core + chromapeel-split entry point
+├── manual_crop.py           # Manual-crop core + chromapeel-crop entry point
+├── clipboard_utils.py       # Clipboard read/copy/staging (Win ctypes / mac osascript / Linux xclip·wl-copy)
+├── chromapeel_gui/          # Desktop Tkinter GUI package
+│   ├── __init__.py          #   Package constants (BASE_DIR, ALPHA_DIR) + platform helpers
+│   ├── __main__.py          #   `python -m chromapeel_gui` entry point
+│   ├── app.py               #   Main window / conversion workflow
+│   ├── dialogs.py           #   Grid-split / manual-crop modals
+│   └── widgets.py           #   Thumbnail grid widget
+├── pyproject.toml           # PEP 621 metadata (registers 4 console scripts)
+├── requirements.txt         # Dependency list for the auto-setup scripts
+├── setup.bat / setup.sh     # Auto-install scripts (Windows / macOS·Linux)
+├── run.bat / run.sh         # One-click GUI launchers (Windows / macOS·Linux)
+├── web/                     # Mobile / browser web build (vanilla JS + Canvas)
 │   ├── index.html
 │   ├── styles.css
-│   └── app.js
-├── tests/                # pytest suite + JS parity runner
+│   └── app.js               #   Chroma + grid-split + crop + ZIP builder
+├── tests/                   # pytest + JS parity + Playwright web tests
+│   ├── conftest.py
 │   ├── test_image_alpha.py
+│   ├── test_grid_split.py
+│   ├── test_manual_crop.py
+│   ├── test_clipboard_utils.py
+│   ├── test_gui_import.py
 │   ├── test_js_parity.py
-│   └── js_parity_runner.js
-├── .github/workflows/deploy-web.yml  # GitHub Pages auto-deploy
+│   ├── js_parity_runner.js  #   Python↔JS byte-parity runner
+│   ├── web_smoke.js         #   Web boot smoke test (Playwright)
+│   └── web_e2e.js           #   Web golden-path e2e (Playwright)
+├── .github/workflows/
+│   ├── test.yml             #   3 OS × 3 Python matrix + web e2e
+│   └── deploy-web.yml       #   GitHub Pages auto-deploy
+├── CHANGELOG.md
+├── LICENSE
 └── .gitignore
 ```
 

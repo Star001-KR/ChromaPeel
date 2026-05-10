@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-10
+
 ### Added
 - `pyproject.toml` for PEP 621 packaging with `chromapeel` (GUI) and `chromapeel-cli` console scripts
 - `__version__` exposed from `imageAlpha`; shown in the GUI window title
@@ -19,13 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add auto-trim of transparent edges as post-processing option. `process_folder` / `remove_color` accept `auto_trim` and `trim_padding`; CLI exposes `--auto-trim` / `--trim-padding N`; desktop GUI and web build expose matching controls. All-transparent results skip trim with a warning log (the original is preserved). JS↔Python parity covers both on/off cases.
 - Grid split tool: slice a sprite sheet into an N×M grid or fixed-size cells as a standalone mode. New `chromapeel-split` console script supports Rows × Cols (`--rows R --cols C`) and Cell W × H (`--cell-w W --cell-h H`). Desktop GUI adds a "Grid Split" button opening a preview modal; the web UI adds a mode switch with thumbnail results and a ZIP download. Tiles are written to `alpha/{stem}_split/{stem}_r{row}c{col}.png` with 0-indexed coordinates and zero-pad width sized to `max(rows, cols)`. Non-divisible cell sizes clip the trailing row/column with a user-facing notice; alpha is preserved for both RGBA and RGB inputs
 - Manual crop tool: select a single rectangular region by mouse/touch drag with 8-handle resize, available as `chromapeel-crop` CLI, desktop GUI right-click modal, and web mode. Single region only (multi-region as future work).
-- Clipboard image input across all surfaces. New `clipboard_utils.read_image_from_clipboard()` core helper wraps `PIL.ImageGrab.grabclipboard()` and handles the file-list case (Linux / macOS Finder copy). All three CLIs (`chromapeel-cli`, `chromapeel-split`, `chromapeel-crop`) accept `--from-clipboard`; for split/crop the input arg becomes optional and exactly one of `INPUT` or `--from-clipboard` is required, with clipboard images staged at `base/clipboard_YYYYMMDD_HHMMSS.png`. Desktop GUI exposes three triggers — `Ctrl/Cmd+V` shortcut, "📋 Paste" button, and right-click menu — across the main input panel, the Grid Split modal, and the Manual Crop modal. The web build adds a global `paste` listener plus a "📋 Paste" button (using `navigator.clipboard.read()`) that routes images to the active mode (Chroma Remove / Grid Split / Crop); mobile browsers fall back to best-effort with explicit error messaging when the API is unavailable or permission is denied.
+- Clipboard image input across all surfaces. New `clipboard_utils.read_image_from_clipboard()` core helper wraps `PIL.ImageGrab.grabclipboard()` and handles the file-list case (Linux / macOS Finder copy). All three CLIs (`chromapeel-cli`, `chromapeel-split`, `chromapeel-crop`) accept `--from-clipboard`; for split/crop the input arg becomes optional and exactly one of `INPUT` or `--from-clipboard` is required, with clipboard images staged via `clipboard_utils.stage_clipboard_image()` (microsecond + uuid suffix collision protection). Desktop GUI exposes three triggers — `Ctrl/Cmd+V` shortcut, "📋 Paste" button, and right-click menu — across the main input panel, the Grid Split modal, and the Manual Crop modal. The web build adds a global `paste` listener plus a "📋 Paste" button (using `navigator.clipboard.read()`) that routes images to the active mode (Chroma Remove / Grid Split / Crop); mobile browsers fall back to best-effort with explicit error messaging when the API is unavailable or permission is denied.
 
 ### Changed
 - `process_folder` callback `index` now means "Nth completion", which in parallel mode no longer matches submission order. Pass `max_workers=1` to keep the old strict ordering.
+- Main GUI clipboard paste now routes through `clipboard_utils.stage_clipboard_image()` so the staging file naming (microsecond + uuid suffix + retry) and the user-facing error wrapping match the CLI and the dialog paths.
+- CLI output messages unified to Korean across `chromapeel-cli` / `chromapeel-split` / `chromapeel-crop` (previously a mix of `완료:`, `Saved N files`, and `saved:`).
 
 ### Fixed
 - `run.bat` / `run.sh` now invoke `python -m chromapeel_gui` instead of the obsolete `chromapeel_gui.py` path that was orphaned by the package split (commit eb29222), which caused Windows `pythonw.exe` to silently fail. Added `chromapeel_gui/__main__.py`, an import precheck in `run.bat` so future module errors surface to the user instead of disappearing, and a `tests/test_gui_import.py` smoke test guarding the entry point.
+- `README.md` / `README.en.md` "Project structure" tree now matches the actual layout (package split into `chromapeel_gui/`, three new core modules, additional tests).
+- `.gitignore` widened from `.venv/` to `.venv*/` so platform-specific virtualenvs (`.venv-macos/`, `.venv-linux/`, ...) don't show up as untracked.
+- `requirements.txt` header comment no longer claims the list is pinned (versions live in `pyproject.toml`; this file is loose by design for the auto-setup scripts).
 
 ## [0.1.0] - 2026-04-27
 
@@ -45,5 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shell metacharacter escaping in macOS clipboard helper, library output
   decoupled from CLI/GUI/web via callback injection
 
-[Unreleased]: https://github.com/Star001-KR/ChromaPeel/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Star001-KR/ChromaPeel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Star001-KR/ChromaPeel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Star001-KR/ChromaPeel/releases/tag/v0.1.0
