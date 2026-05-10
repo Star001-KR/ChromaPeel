@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are EOL: 3.8 in 2024-10, 3.9 in 2025-10). CI matrix migrated from
   `3.8 / 3.10 / 3.12` to `3.10 / 3.12 / 3.13`.
 
+### Fixed
+- `run.sh` now mirrors `run.bat`'s import precheck — `chromapeel_gui` import
+  failures (missing dependency, broken package) surface to the user with the
+  full traceback and a recovery hint instead of silently exiting. Closes a
+  cross-platform parity gap left after the v0.2.0 launcher fix that only
+  covered `run.bat`.
+
 ### Changed
 - Modernise typing in `imageAlpha.py` and `grid_split.py` to PEP 585 native
   generics (`list[X]`, `tuple[X, Y]`); `from typing import List, Tuple` is
