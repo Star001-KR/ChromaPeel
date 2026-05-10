@@ -14,8 +14,6 @@ import sys
 
 from PIL import Image
 
-__version__ = "0.2.0"
-
 
 class GridSplitResult(TypedDict):
     files: list[Path]
@@ -128,17 +126,6 @@ def split_image_grid(
     }
 
 
-def _stage_clipboard_image(staging_dir: str = "base") -> Path:
-    """CLI 진입점에서 호출. 실패 시 사용자 메시지 출력 후 sys.exit(1)."""
-    from clipboard_utils import ClipboardImageError, stage_clipboard_image
-
-    try:
-        return stage_clipboard_image(staging_dir)
-    except ClipboardImageError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
-
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="chromapeel-split",
@@ -188,7 +175,8 @@ def _run_cli(argv: Optional[list[str]] = None) -> int:
         parser.error("Mode B는 --cell-w와 --cell-h를 둘 다 지정해야 합니다")
 
     if args.from_clipboard:
-        args.input_path = str(_stage_clipboard_image("base"))
+        from clipboard_utils import stage_clipboard_image_or_exit
+        args.input_path = str(stage_clipboard_image_or_exit("base"))
 
     stem = Path(args.input_path).stem
     out_dir = Path(args.output) / f"{stem}_split"

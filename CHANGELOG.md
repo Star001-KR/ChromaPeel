@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covered `run.bat`.
 
 ### Changed
+- Consolidate the three identical `_stage_clipboard_image` CLI helpers
+  (`imageAlpha.py`, `grid_split.py`, `manual_crop.py`) into a single
+  `clipboard_utils.stage_clipboard_image_or_exit()` so the
+  "no traceback / stderr message / exit 1" policy lives in one place. Three
+  focused unit tests guard the wrapper.
+- Promote the shared CLI / GUI default chroma-key parameters
+  (`_CLI_DEFAULT_*` in `imageAlpha.py`, mirrored as `DEFAULT_*` in
+  `chromapeel_gui/app.py`) to public `APP_DEFAULT_*` exported from
+  `imageAlpha`. The GUI now imports them, removing a 7-constant value
+  duplication that previously had to be kept in lockstep manually.
+- Drop the unused `__version__ = "0.2.0"` constant from `grid_split.py`. Only
+  `imageAlpha.__version__` is consumed (by the GUI window title and the
+  `pyproject.toml` dynamic version), so the second copy was stale and
+  guaranteed to drift on the next release bump.
 - Modernise typing in `imageAlpha.py` and `grid_split.py` to PEP 585 native
   generics (`list[X]`, `tuple[X, Y]`); `from typing import List, Tuple` is
   removed. `Optional` and `Callable` are retained for clarity.

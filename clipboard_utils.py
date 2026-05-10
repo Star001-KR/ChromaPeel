@@ -94,6 +94,22 @@ def stage_clipboard_image(staging_dir: str | Path = "base") -> Path:
     raise ClipboardImageError("스테이징 파일명 충돌이 반복되어 포기")
 
 
+def stage_clipboard_image_or_exit(staging_dir: str | Path = "base") -> Path:
+    """CLI 진입점용 — ``stage_clipboard_image`` 의 ``ClipboardImageError`` 를 stderr
+    로 출력하고 ``sys.exit(1)`` 으로 종료하는 wrapper.
+
+    회귀 방지: `tests/test_*` 의 ``*_clipboard_pil_exception_exits_cleanly`` 시리즈가
+    강제하는 "traceback 노출 금지 + exit 1 + 사용자 메시지" 정책을 한 곳에 모은다.
+    GUI 는 ``ClipboardImageError`` 를 messagebox 로 표시하므로 이 헬퍼 대신
+    ``stage_clipboard_image`` 를 직접 호출한다.
+    """
+    try:
+        return stage_clipboard_image(staging_dir)
+    except ClipboardImageError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+
 def copy_image_to_clipboard(path: Path) -> None:
     """Copy the image at ``path`` to the system clipboard.
 

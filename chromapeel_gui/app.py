@@ -10,7 +10,16 @@ from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import imageAlpha
-from imageAlpha import __version__
+from imageAlpha import (
+    APP_DEFAULT_AUTO_TRIM,
+    APP_DEFAULT_DECONTAMINATE,
+    APP_DEFAULT_EDGE_EROSION,
+    APP_DEFAULT_FEATHER,
+    APP_DEFAULT_TARGET_COLOR,
+    APP_DEFAULT_TOLERANCE,
+    APP_DEFAULT_TRIM_PADDING,
+    __version__,
+)
 from clipboard_utils import (
     ClipboardImageError,
     copy_image_to_clipboard,
@@ -23,14 +32,9 @@ from .widgets import ThumbnailView
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TARGET_COLOR = (255, 37, 255)
-DEFAULT_TOLERANCE = 20
-DEFAULT_FEATHER = 100
-DEFAULT_DECONTAMINATE = True
-DEFAULT_EDGE_EROSION = 1
+# GUI 전용 토글 — CLI 는 target_color=None 으로 직접 auto-detect 모드를 표현하므로
+# 별도 default 가 없다. 알고리즘 파라미터 default 는 imageAlpha.APP_DEFAULT_* 공유.
 DEFAULT_AUTO_DETECT_BG = False
-DEFAULT_AUTO_TRIM = False
-DEFAULT_TRIM_PADDING = 0
 
 
 class ChromaPeelApp:
@@ -43,14 +47,14 @@ class ChromaPeelApp:
         BASE_DIR.mkdir(exist_ok=True)
         ALPHA_DIR.mkdir(exist_ok=True)
 
-        self.target_color: tuple[int, int, int] = DEFAULT_TARGET_COLOR
-        self.tolerance = tk.IntVar(value=DEFAULT_TOLERANCE)
-        self.feather = tk.IntVar(value=DEFAULT_FEATHER)
-        self.decontaminate = tk.BooleanVar(value=DEFAULT_DECONTAMINATE)
-        self.edge_erosion = tk.IntVar(value=DEFAULT_EDGE_EROSION)
+        self.target_color: tuple[int, int, int] = APP_DEFAULT_TARGET_COLOR
+        self.tolerance = tk.IntVar(value=APP_DEFAULT_TOLERANCE)
+        self.feather = tk.IntVar(value=APP_DEFAULT_FEATHER)
+        self.decontaminate = tk.BooleanVar(value=APP_DEFAULT_DECONTAMINATE)
+        self.edge_erosion = tk.IntVar(value=APP_DEFAULT_EDGE_EROSION)
         self.auto_detect_bg = tk.BooleanVar(value=DEFAULT_AUTO_DETECT_BG)
-        self.auto_trim = tk.BooleanVar(value=DEFAULT_AUTO_TRIM)
-        self.trim_padding = tk.IntVar(value=DEFAULT_TRIM_PADDING)
+        self.auto_trim = tk.BooleanVar(value=APP_DEFAULT_AUTO_TRIM)
+        self.trim_padding = tk.IntVar(value=APP_DEFAULT_TRIM_PADDING)
 
         self.advanced_visible = False
         self.processing = False
@@ -210,14 +214,14 @@ class ChromaPeelApp:
             self.pick_color_btn.configure(state="normal")
 
     def _reset_defaults(self):
-        self.target_color = DEFAULT_TARGET_COLOR
-        self.tolerance.set(DEFAULT_TOLERANCE)
-        self.feather.set(DEFAULT_FEATHER)
-        self.decontaminate.set(DEFAULT_DECONTAMINATE)
-        self.edge_erosion.set(DEFAULT_EDGE_EROSION)
+        self.target_color = APP_DEFAULT_TARGET_COLOR
+        self.tolerance.set(APP_DEFAULT_TOLERANCE)
+        self.feather.set(APP_DEFAULT_FEATHER)
+        self.decontaminate.set(APP_DEFAULT_DECONTAMINATE)
+        self.edge_erosion.set(APP_DEFAULT_EDGE_EROSION)
         self.auto_detect_bg.set(DEFAULT_AUTO_DETECT_BG)
-        self.auto_trim.set(DEFAULT_AUTO_TRIM)
-        self.trim_padding.set(DEFAULT_TRIM_PADDING)
+        self.auto_trim.set(APP_DEFAULT_AUTO_TRIM)
+        self.trim_padding.set(APP_DEFAULT_TRIM_PADDING)
         self._update_color_ui_state()
         self._set_status("기본값으로 복원")
 

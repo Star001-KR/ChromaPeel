@@ -18,6 +18,7 @@ from clipboard_utils import (
     copy_image_to_clipboard,
     read_image_from_clipboard,
     stage_clipboard_image,
+    stage_clipboard_image_or_exit,
 )
 
 
@@ -323,3 +324,48 @@ def test_stage_wraps_mkdir_failure_as_clipboard_image_error(monkeypatch, tmp_pat
 
     with pytest.raises(ClipboardImageError, match="스테이징 폴더 생성 실패"):
         stage_clipboard_image(tmp_path / "blocked")
+
+
+# ---------- stage_clipboard_image_or_exit (CLI wrapper) ----------
+
+def test_stage_or_exit_returns_path_on_success(monkeypatch, tmp_path):
+    """성공 경로는 underlying ``stage_clipboard_image`` 와 동일하게 Path 반환."""
+    _patch_grabclipboard(monkeypatch, Image.new("RGB", (2, 2), (10, 20, 30)))
+
+    out = stage_clipboard_image_or_exit(tmp_path / "stage")
+
+    assert out.is_file()
+    assert out.parent == tmp_path / "stage"
+    assert out.suffix == ".png"
+
+
+def test_stage_or_exit_prints_message_and_exits_on_empty_clipboard(
+    monkeypatch, tmp_path, capsys,
+):
+    """ClipboardImageError 는 traceback 없이 stderr 메시지 + exit(1) 로 변환된다.
+
+    회귀 방지: 3 CLI (`chromapeel-cli/-split/-crop`) 가 공유하던 _stage_clipboard_image
+    중복 헬퍼를 단일화한 후에도 정책이 유지되는지 검증.
+    """
+    _patch_grabclipboard(monkeypatch, None)
+
+    with pytest.raises(SystemExit) as ei:
+        stage_clipboard_image_or_exit(tmp_path)
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "이미지가 없습니다" in err
+    assert "Traceback" not in err
+
+
+def test_stage_or_exit_wraps_pil_exception(monkeypatch, tmp_path, capsys):
+    """ImageGrab 자체 예외 (Linux wl-paste 미설치 등) 도 동일 정책."""
+    def _raise():
+        raise OSError("wl-paste not installed")
+    monkeypatch.setattr(clipboard_utils.ImageGrab, "grabclipboard", _raise)
+
+    with pytest.raises(SystemExit) as ei:
+        stage_clipboard_image_or_exit(tmp_path)
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "클립보드 읽기 실패" in err
+    assert "Traceback" not in err

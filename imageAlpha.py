@@ -17,14 +17,17 @@ RGB = tuple[int, int, int]
 # - On per-file failure: output_path is None, error holds the exception.
 ProgressCallback = Callable[[int, int, str, Optional[str], Optional[BaseException]], None]
 
-# CLI 기본 크로마 키 파라미터 — `process_folder` 호출과 `--from-clipboard` 분기가
-# 같은 값을 보도록 한 곳에 모은다. GUI 측은 chromapeel_gui/app.py 가 자체 기본값을
-# 사용하므로 별개 (사용자 조정 UI 가 있어 인라인 default 가 자연스럽다).
-_CLI_DEFAULT_TARGET_COLOR: RGB = (255, 37, 255)
-_CLI_DEFAULT_TOLERANCE = 20
-_CLI_DEFAULT_FEATHER = 100
-_CLI_DEFAULT_DECONTAMINATE = True
-_CLI_DEFAULT_EDGE_EROSION = 1
+# CLI / GUI 공유 사용자 기본값 — 마젠타 크로마 키 시나리오에 튜닝된 값.
+# `remove_color` / `process_folder` 의 함수-level default 는 라이브러리 호환을 위해
+# 더 보수적인 값을 유지한다 (tolerance=30, feather=0, edge_erosion=0).
+# GUI (`chromapeel_gui/app.py`) 도 이 상수를 import 해 동일 default 를 공유한다.
+APP_DEFAULT_TARGET_COLOR: RGB = (255, 37, 255)
+APP_DEFAULT_TOLERANCE = 20
+APP_DEFAULT_FEATHER = 100
+APP_DEFAULT_DECONTAMINATE = True
+APP_DEFAULT_EDGE_EROSION = 1
+APP_DEFAULT_AUTO_TRIM = False
+APP_DEFAULT_TRIM_PADDING = 0
 
 
 def detect_background_color(data: np.ndarray) -> RGB:
@@ -249,20 +252,9 @@ def process_folder(
             _emit(i, in_file, out_file, err)
 
 
-def _stage_clipboard_image(staging_dir: str = "base") -> Path:
-    """CLI 진입점에서 호출. 실패 시 사용자 메시지 출력 후 sys.exit(1)."""
-    import sys
-    from clipboard_utils import ClipboardImageError, stage_clipboard_image
-
-    try:
-        return stage_clipboard_image(staging_dir)
-    except ClipboardImageError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
-
 def _run_cli() -> None:
     import argparse
+    from clipboard_utils import stage_clipboard_image_or_exit
 
     parser = argparse.ArgumentParser(
         prog="chromapeel-cli",
@@ -277,17 +269,17 @@ def _run_cli() -> None:
     args = parser.parse_args()
 
     if args.from_clipboard:
-        in_path = _stage_clipboard_image("base")
+        in_path = stage_clipboard_image_or_exit("base")
         out_dir = Path("alpha")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / in_path.name
         remove_color(
             str(in_path), str(out_path),
-            target_color=_CLI_DEFAULT_TARGET_COLOR,
-            tolerance=_CLI_DEFAULT_TOLERANCE,
-            feather=_CLI_DEFAULT_FEATHER,
-            decontaminate=_CLI_DEFAULT_DECONTAMINATE,
-            edge_erosion=_CLI_DEFAULT_EDGE_EROSION,
+            target_color=APP_DEFAULT_TARGET_COLOR,
+            tolerance=APP_DEFAULT_TOLERANCE,
+            feather=APP_DEFAULT_FEATHER,
+            decontaminate=APP_DEFAULT_DECONTAMINATE,
+            edge_erosion=APP_DEFAULT_EDGE_EROSION,
             auto_trim=args.auto_trim,
             trim_padding=args.trim_padding,
         )
@@ -304,11 +296,11 @@ def _run_cli() -> None:
     process_folder(
         input_dir="base",
         output_dir="alpha",
-        target_color=_CLI_DEFAULT_TARGET_COLOR,
-        tolerance=_CLI_DEFAULT_TOLERANCE,
-        feather=_CLI_DEFAULT_FEATHER,
-        decontaminate=_CLI_DEFAULT_DECONTAMINATE,
-        edge_erosion=_CLI_DEFAULT_EDGE_EROSION,
+        target_color=APP_DEFAULT_TARGET_COLOR,
+        tolerance=APP_DEFAULT_TOLERANCE,
+        feather=APP_DEFAULT_FEATHER,
+        decontaminate=APP_DEFAULT_DECONTAMINATE,
+        edge_erosion=APP_DEFAULT_EDGE_EROSION,
         auto_trim=args.auto_trim,
         trim_padding=args.trim_padding,
         progress_callback=_cli_progress,

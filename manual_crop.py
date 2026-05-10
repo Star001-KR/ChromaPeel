@@ -2,21 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 from PIL import Image
-
-
-def _stage_clipboard_image(staging_dir: str = "base") -> Path:
-    """CLI 진입점에서 호출. 실패 시 사용자 메시지 출력 후 sys.exit(1)."""
-    from clipboard_utils import ClipboardImageError, stage_clipboard_image
-
-    try:
-        return stage_clipboard_image(staging_dir)
-    except ClipboardImageError as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
 
 
 def crop_image(
@@ -107,7 +95,8 @@ def _run_cli() -> None:
         parser.error("input 또는 --from-clipboard 중 하나를 지정해야 합니다")
 
     if args.from_clipboard:
-        args.input = str(_stage_clipboard_image("base"))
+        from clipboard_utils import stage_clipboard_image_or_exit
+        args.input = str(stage_clipboard_image_or_exit("base"))
 
     x, y, w, h = args.crop
     out_file = crop_image(args.input, x, y, w, h, out_dir=args.out_dir)
