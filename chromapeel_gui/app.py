@@ -4,7 +4,6 @@ import logging
 import shutil
 import threading
 import tkinter as tk
-from datetime import datetime
 from pathlib import Path
 from tkinter import colorchooser, messagebox, simpledialog, ttk
 
@@ -12,7 +11,11 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 import imageAlpha
 from imageAlpha import __version__
-from clipboard_utils import copy_image_to_clipboard, read_image_from_clipboard
+from clipboard_utils import (
+    ClipboardImageError,
+    copy_image_to_clipboard,
+    stage_clipboard_image,
+)
 
 from . import ALPHA_DIR, BASE_DIR, _open_path, _reveal_path
 from .dialogs import GridSplitDialog, ManualCropDialog
@@ -292,19 +295,13 @@ class ChromaPeelApp:
         if self.processing:
             self._set_status("처리 중 — 클립보드 입력 무시")
             return
+        # CLI / 다이얼로그와 동일한 staging 헬퍼를 사용해 마이크로초 + uuid suffix
+        # 충돌 보호와 ClipboardImageError 메시지 래핑을 그대로 받는다.
         try:
-            img = read_image_from_clipboard()
-        except Exception as e:
-            logger.warning("클립보드 읽기 실패", exc_info=True)
-            self._set_status(f"클립보드 읽기 실패: {e}")
+            dest = stage_clipboard_image(BASE_DIR)
+        except ClipboardImageError as e:
+            self._set_status(str(e))
             return
-        if img is None:
-            self._set_status("클립보드에 이미지가 없습니다")
-            return
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        dest = BASE_DIR / f"clipboard_{ts}.png"
-        try:
-            img.save(dest, "PNG")
         except Exception as e:
             logger.warning("클립보드 이미지 저장 실패", exc_info=True)
             self._set_status(f"클립보드 저장 실패: {e}")
