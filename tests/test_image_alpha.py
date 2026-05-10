@@ -347,6 +347,52 @@ def test_process_folder_propagates_auto_trim(tmp_path):
     assert out.shape == (2, 2, 4)  # cropped to the 2x2 opaque region
 
 
+def test_process_folder_propagates_trim_alpha_threshold(tmp_path):
+    """배치 API 가 trim_alpha_threshold 를 remove_color 까지 전달하는지 회귀 방지.
+
+    같은 입력에 대해 threshold=0 vs threshold=100 이 서로 다른 bbox 를 만들어야
+    한다 — 즉 process_folder 가 인자를 단순 무시하지 않는다는 증거. 이전에는
+    process_folder 시그니처에 매개변수가 없어서 항상 default 0 으로 고정됐다.
+    """
+    in_dir = tmp_path / "in"
+    in_dir.mkdir()
+
+    # 10x10 magenta 배경에 두 개의 부분 투명 픽셀을 직접 박는다.
+    # remove_color 는 magenta 픽셀의 alpha 만 0 으로 만들고, 색상이 다른
+    # 두 픽셀은 alpha 를 그대로 유지한다 → trim_alpha_threshold 만이
+    # bbox 크기를 갈라놓는 변수가 된다.
+    arr = _solid((255, 37, 255), (10, 10))
+    arr[3, 3] = [50, 200, 100, 50]    # alpha=50 (낮음)
+    arr[7, 7] = [50, 200, 100, 200]   # alpha=200 (높음)
+    _save(arr, in_dir / "a.png")
+
+    out_low = tmp_path / "out_low"
+    out_high = tmp_path / "out_high"
+
+    imageAlpha.process_folder(
+        str(in_dir), str(out_low),
+        target_color=(255, 37, 255), tolerance=10,
+        feather=0, decontaminate=False, edge_erosion=0,
+        auto_trim=True, trim_padding=0, trim_alpha_threshold=0,
+        max_workers=1,
+    )
+    imageAlpha.process_folder(
+        str(in_dir), str(out_high),
+        target_color=(255, 37, 255), tolerance=10,
+        feather=0, decontaminate=False, edge_erosion=0,
+        auto_trim=True, trim_padding=0, trim_alpha_threshold=100,
+        max_workers=1,
+    )
+
+    low = np.array(Image.open(out_low / "a.png"))
+    high = np.array(Image.open(out_high / "a.png"))
+
+    # threshold=0: 두 픽셀 모두 bbox 에 포함 → (3,3)..(7,7) inclusive → 5x5
+    assert low.shape == (5, 5, 4)
+    # threshold=100: alpha=50 픽셀 제외, alpha=200 픽셀만 → 1x1
+    assert high.shape == (1, 1, 4)
+
+
 # ---------- CLI --from-clipboard ----------
 
 def test_cli_from_clipboard_stages_and_processes(tmp_path, monkeypatch):

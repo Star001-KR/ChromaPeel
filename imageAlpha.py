@@ -168,6 +168,7 @@ def process_folder(
     edge_erosion: int = 0,
     auto_trim: bool = False,
     trim_padding: int = 0,
+    trim_alpha_threshold: int = 0,
     progress_callback: Optional[ProgressCallback] = None,
     max_workers: Optional[int] = None,
 ) -> None:
@@ -183,6 +184,8 @@ def process_folder(
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
     :param auto_trim: True면 저장 직전 알파 bbox로 투명 외곽을 잘라냄 (전체 투명 시 원본 유지)
     :param trim_padding: auto_trim bbox 사방으로 추가할 여유 픽셀 수
+    :param trim_alpha_threshold: 이 값을 초과하는 알파만 auto_trim bbox 계산에 포함
+        (기본 0 = 완전 투명만 자르기). auto_trim=False면 무시됨.
     :param progress_callback: 각 파일 처리 후 호출. 시그니처:
         (index, total, input_path, output_path or None, error or None).
         index는 "N번째 완료"를 의미하며, 병렬 모드에서는 입력 순서와 다를 수 있습니다.
@@ -219,7 +222,8 @@ def process_folder(
         try:
             remove_color(str(file), str(out_file), target_color, tolerance,
                          feather, decontaminate, edge_erosion,
-                         auto_trim=auto_trim, trim_padding=trim_padding)
+                         auto_trim=auto_trim, trim_padding=trim_padding,
+                         trim_alpha_threshold=trim_alpha_threshold)
             return file, out_file, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
