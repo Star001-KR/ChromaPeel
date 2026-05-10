@@ -4,12 +4,13 @@
 
 const { chromium } = require('playwright');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const { startServer } = require('./_web_server');
 
-const INDEX_PATH = path.resolve(__dirname, '..', 'web', 'index.html');
+const WEB_DIR = path.resolve(__dirname, '..', 'web');
 const SETTLE_MS = 500;
 
 (async () => {
+  const server = await startServer(WEB_DIR);
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -24,11 +25,11 @@ const SETTLE_MS = 500;
     }
   });
 
-  const url = pathToFileURL(INDEX_PATH).toString();
-  await page.goto(url, { waitUntil: 'load' });
+  await page.goto(server.url, { waitUntil: 'load' });
   await page.waitForTimeout(SETTLE_MS);
 
   await browser.close();
+  await server.close();
 
   if (errors.length > 0) {
     console.error('Web boot smoke test FAILED:');

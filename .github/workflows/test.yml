@@ -55,7 +55,8 @@ jobs:
           node-version: 20
 
       - name: JS syntax check
-        run: node --check web/app.js
+        run: |
+          for f in web/*.js; do node --check "$f"; done
 
       - name: Install Playwright (chromium only)
         run: |

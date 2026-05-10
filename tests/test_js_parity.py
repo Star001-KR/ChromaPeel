@@ -13,7 +13,7 @@ from PIL import Image
 
 import imageAlpha
 
-JS_RUNNER = Path(__file__).parent / "js_parity_runner.js"
+JS_RUNNER = Path(__file__).parent / "js_parity_runner.mjs"
 
 
 def _build_test_image(w=36, h=24):

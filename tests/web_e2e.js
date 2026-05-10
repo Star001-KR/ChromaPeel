@@ -14,10 +14,9 @@
 
 const { chromium } = require('playwright');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const { startServer } = require('./_web_server');
 
-const INDEX_PATH = path.resolve(__dirname, '..', 'web', 'index.html');
-const URL_STR = pathToFileURL(INDEX_PATH).toString();
+const WEB_DIR = path.resolve(__dirname, '..', 'web');
 
 // ---------- Test runner ----------
 
@@ -25,6 +24,7 @@ const tests = [];
 function test(name, fn) { tests.push({ name, fn }); }
 
 async function run() {
+  const server = await startServer(WEB_DIR);
   const browser = await chromium.launch();
   let failed = 0;
   for (const t of tests) {
@@ -34,7 +34,7 @@ async function run() {
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(`console.error: ${m.text()}`); });
     try {
-      await page.goto(URL_STR, { waitUntil: 'load' });
+      await page.goto(server.url, { waitUntil: 'load' });
       await page.waitForFunction(() => !!document.getElementById('fileInput'));
       await t.fn(page);
       // autoTrim console.warn fires by design when image goes fully transparent;
@@ -49,6 +49,7 @@ async function run() {
     }
   }
   await browser.close();
+  await server.close();
   if (failed > 0) {
     console.error(`\nWeb e2e FAILED: ${failed}/${tests.length} test(s) failed`);
     process.exit(1);

@@ -1,10 +1,17 @@
 // Helper invoked by test_js_parity.py.
-// Loads web/app.js in node, runs processImage on raw RGBA from
-// `<tmpdir>/in.rgba` + meta.json, writes `<tmpdir>/js.rgba`.
-const fs = require('fs');
-const path = require('path');
+// Imports processImage from web/algorithm.js (pure ESM, no DOM),
+// reads raw RGBA from `<tmpdir>/in.rgba` + meta.json, writes
+// `<tmpdir>/js.rgba` and js_meta.json.
+//
+// algorithm.js is DOM-free, so this runner needs no globalThis shims —
+// only ImageData, which we polyfill since it's a browser global.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// DOM/browser shims that satisfy the import-time wiring in app.js.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 globalThis.ImageData = class {
   constructor(data, width, height) {
     this.data = data;
@@ -12,30 +19,16 @@ globalThis.ImageData = class {
     this.height = height;
   }
 };
-globalThis.document = {
-  addEventListener() {},
-  getElementById() {
-    return { addEventListener() {}, classList: { toggle() {} } };
-  },
-  createElement() {
-    return { appendChild() {}, click() {}, remove() {} };
-  },
-  body: { addEventListener() {} },
-};
-globalThis.window = globalThis;
-globalThis.URL = { createObjectURL: () => '', revokeObjectURL: () => {} };
-globalThis.performance = { now: () => 0 };
-globalThis.requestAnimationFrame = (cb) => cb();
-globalThis.navigator = {};
+
+const { processImage } = await import(
+  path.join(__dirname, '..', 'web', 'algorithm.js')
+);
 
 const tmpDir = process.argv[2];
 if (!tmpDir) {
-  console.error('usage: node js_parity_runner.js <tmpdir>');
+  console.error('usage: node js_parity_runner.mjs <tmpdir>');
   process.exit(2);
 }
-
-const appJs = path.join(__dirname, '..', 'web', 'app.js');
-eval(fs.readFileSync(appJs, 'utf8'));
 
 const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'meta.json'), 'utf8'));
 const buf = fs.readFileSync(path.join(tmpDir, 'in.rgba'));
