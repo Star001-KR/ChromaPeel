@@ -1,6 +1,8 @@
-# Pinned dependency list for setup.bat / setup.sh and bare `pip install -r`.
-# The authoritative metadata lives in pyproject.toml — for editable installs
-# prefer `pip install -e ".[dev]"` (adds pytest for the test suite).
+# Loose dependency list for setup.bat / setup.sh and bare `pip install -r`.
+# Versions are intentionally unpinned so the auto-setup scripts pull the
+# latest compatible release. The authoritative metadata lives in
+# pyproject.toml — for editable installs prefer `pip install -e ".[dev]"`
+# (adds pytest for the test suite).
 Pillow
 numpy
 tkinterdnd2
