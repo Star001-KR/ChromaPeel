@@ -5,7 +5,7 @@ import shutil
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import colorchooser, messagebox, simpledialog, ttk
+from tkinter import colorchooser, filedialog, messagebox, simpledialog, ttk
 
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
@@ -106,6 +106,8 @@ class ChromaPeelApp:
         self.btn_paste.pack(side="left", padx=(8, 0))
         self.btn_grid_split = ttk.Button(btnrow, text="격자 분할...", command=self._open_grid_split_dialog)
         self.btn_grid_split.pack(side="left", padx=(8, 0))
+        self.btn_crop = ttk.Button(btnrow, text="크롭...", command=self._open_crop_dialog_from_toolbar)
+        self.btn_crop.pack(side="left", padx=(8, 0))
         self.btn_open_out = ttk.Button(btnrow, text="결과 폴더 열기", command=self._open_alpha_dir)
         self.btn_open_out.pack(side="right")
         self.btn_convert = ttk.Button(btnrow, text="   변환   ", command=self._start_conversion)
@@ -332,6 +334,23 @@ class ChromaPeelApp:
             self._set_status("변환 중에는 격자 분할을 열 수 없습니다")
             return
         GridSplitDialog(self.root)
+
+    def _open_crop_dialog_from_toolbar(self):
+        if self.processing:
+            self._set_status("변환 중에는 크롭을 열 수 없습니다")
+            return
+        path_str = filedialog.askopenfilename(
+            title="크롭할 이미지 선택",
+            filetypes=[
+                ("PNG 이미지", "*.png"),
+                ("모든 이미지", "*.png *.jpg *.jpeg *.bmp *.webp"),
+                ("모든 파일", "*.*"),
+            ],
+            parent=self.root,
+        )
+        if not path_str:
+            return
+        self._open_crop_dialog(Path(path_str))
 
     def _open_file(self, path: Path) -> None:
         try:
