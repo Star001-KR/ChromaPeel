@@ -4,13 +4,13 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 __version__ = "0.2.0"
 
 logger = logging.getLogger(__name__)
 
-RGB = Tuple[int, int, int]
+RGB = tuple[int, int, int]
 
 # (index, total, input_path, output_path or None, error or None)
 # - On success: output_path is set, error is None.
@@ -48,7 +48,7 @@ def trim_transparent_edges(
     rgba: np.ndarray,
     alpha_threshold: int = 0,
     padding: int = 0,
-) -> Optional[Tuple[int, int, int, int]]:
+) -> Optional[tuple[int, int, int, int]]:
     """알파 채널의 bbox를 계산해 (left, top, right, bottom) 튜플로 반환합니다.
 
     PIL.Image.crop과 동일한 (left, top, right, bottom) 형식 — right/bottom은 exclusive.
@@ -214,7 +214,7 @@ def process_folder(
 
     logger.info("배치 처리 시작: %d개 파일, 워커 %d", total, workers)
 
-    def _process_one(file: Path) -> Tuple[Path, Optional[Path], Optional[BaseException]]:
+    def _process_one(file: Path) -> tuple[Path, Optional[Path], Optional[BaseException]]:
         out_file = output_path / file.name
         try:
             remove_color(str(file), str(out_file), target_color, tolerance,

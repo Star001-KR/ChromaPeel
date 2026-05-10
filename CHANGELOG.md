@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (BREAKING)
+- Drop Python 3.8 and 3.9 support. Floor is now `>=3.10` (both 3.8 and 3.9
+  are EOL: 3.8 in 2024-10, 3.9 in 2025-10). CI matrix migrated from
+  `3.8 / 3.10 / 3.12` to `3.10 / 3.12 / 3.13`.
+
 ### Changed
+- Modernise typing in `imageAlpha.py` and `grid_split.py` to PEP 585 native
+  generics (`list[X]`, `tuple[X, Y]`); `from typing import List, Tuple` is
+  removed. `Optional` and `Callable` are retained for clarity.
 - Web frontend modularised. The 1422-LOC `web/app.js` is split into 12 ESM
   modules (`algorithm` · `zip` · `state` · `dom` · `util` · `chroma` · `grid`
   · `crop` · `clipboard` · `mode` · `main`, plus `package.json` declaring

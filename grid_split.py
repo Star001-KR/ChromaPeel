@@ -7,7 +7,7 @@
 두 모드 모두 우/하단 잔여 픽셀은 잘라낸다(clip). 리사이즈는 하지 않는다.
 """
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
+from typing import Optional, TypedDict
 
 import argparse
 import sys
@@ -18,12 +18,12 @@ __version__ = "0.2.0"
 
 
 class GridSplitResult(TypedDict):
-    files: List[Path]
+    files: list[Path]
     rows: int
     cols: int
     cell_w: int
     cell_h: int
-    clipped: Tuple[int, int]
+    clipped: tuple[int, int]
 
 
 def _validate_mode(
@@ -107,7 +107,7 @@ def split_image_grid(
     stem = Path(image_path).stem
     pad = len(str(max(n_rows, n_cols)))
 
-    files: List[Path] = []
+    files: list[Path] = []
     for r in range(n_rows):
         for c in range(n_cols):
             x0 = c * c_w
@@ -166,7 +166,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_cli(argv: Optional[List[str]] = None) -> int:
+def _run_cli(argv: Optional[list[str]] = None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
 

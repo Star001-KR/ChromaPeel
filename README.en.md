@@ -37,7 +37,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+
 - Pillow, numpy, tkinterdnd2
 - (Linux only) `xclip` (X11) or `wl-clipboard` (Wayland) for image clipboard copy
 
@@ -311,4 +311,4 @@ pip install -e ".[dev]"   # once, includes pytest
 pytest -v
 ```
 
-The JS parity test runs only when `node` is available; otherwise it's auto-skipped. Every push and pull request is verified by GitHub Actions across Ubuntu / Windows / macOS × Python 3.8 / 3.10 / 3.12.
+The JS parity test runs only when `node` is available; otherwise it's auto-skipped. Every push and pull request is verified by GitHub Actions across Ubuntu / Windows / macOS × Python 3.10 / 3.12 / 3.13.
