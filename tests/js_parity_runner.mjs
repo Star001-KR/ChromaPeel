@@ -36,6 +36,7 @@ const data = new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength);
 
 const result = processImage(new ImageData(data, meta.w, meta.h), {
   targetColor: meta.target_color,
+  targetColors: meta.target_colors,
   tolerance: meta.tolerance,
   feather: meta.feather,
   decontaminate: meta.decontaminate,

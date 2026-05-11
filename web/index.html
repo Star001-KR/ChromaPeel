@@ -69,10 +69,10 @@
     </section>
 
     <section class="params chroma-only" aria-label="파라미터">
-      <div class="row">
-        <label for="colorPicker">대상 색상</label>
-        <input id="colorPicker" type="color" value="#ff25ff" />
-        <span id="colorLabel" class="muted">(255, 37, 255)</span>
+      <div class="row color-row">
+        <label>대상 색상</label>
+        <div id="colorsContainer" class="colors-container" aria-live="polite"></div>
+        <button id="addColorBtn" type="button" class="ghost" aria-label="색상 추가">+ 색상</button>
         <label class="check">
           <input id="autoDetect" type="checkbox" />
           자동 감지

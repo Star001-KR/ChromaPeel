@@ -40,6 +40,53 @@ def test_detect_background_accepts_float_input():
     assert imageAlpha.detect_background_color(arr) == (10, 20, 30)
 
 
+# ---------- detect_background_colors (multi-color, dynamic k) ----------
+
+def test_detect_colors_single_color_returns_one():
+    arr = _solid((10, 20, 30), (10, 10))
+    arr[3:7, 3:7] = [50, 200, 100, 255]  # 내부만 다름
+    assert imageAlpha.detect_background_colors(arr) == [(10, 20, 30)]
+
+
+def test_detect_colors_two_color_border():
+    """테두리가 두 색 → 두 색 모두 반환, 빈도 desc 정렬."""
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[..., :3] = [10, 20, 30]          # 전체 A 로 초기화
+    arr[0, :, :3] = [200, 100, 50]       # 상단 행 1줄: 10px 가 B
+    arr[-1, :, :3] = [200, 100, 50]      # 하단 행 1줄: 10px 가 B
+    # 테두리 픽셀 총 36 (10+10+8+8). B = 20, A = 16 → [B, A]
+    colors = imageAlpha.detect_background_colors(arr, min_ratio=0.1)
+    assert colors[0] == (200, 100, 50)
+    assert (10, 20, 30) in colors
+
+
+def test_detect_colors_filters_below_min_ratio():
+    """min_ratio 미만 색은 제외, 최빈 1개는 비율 무관 포함."""
+    arr = _solid((255, 255, 255), (20, 20))
+    arr[0, 0:2, :3] = [255, 37, 255]      # 마젠타 ~2/76 ≈ 2.6%
+    colors = imageAlpha.detect_background_colors(arr, min_ratio=0.1)
+    assert colors == [(255, 255, 255)]
+
+
+def test_detect_colors_always_returns_at_least_one():
+    """min_ratio 가 100% 라도 최빈 1개는 반드시 반환."""
+    arr = _solid((255, 255, 255), (10, 10))
+    arr[0, 0:2, :3] = [0, 0, 0]
+    colors = imageAlpha.detect_background_colors(arr, min_ratio=2.0)
+    assert colors == [(255, 255, 255)]
+
+
+def test_detect_colors_respects_max_k():
+    arr = np.zeros((9, 9, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:, 0:3, :3] = [10, 20, 30]
+    arr[:, 3:6, :3] = [40, 50, 60]
+    arr[:, 6:9, :3] = [70, 80, 90]
+    colors = imageAlpha.detect_background_colors(arr, min_ratio=0.0, max_k=2)
+    assert len(colors) == 2
+
+
 # ---------- remove_color ----------
 
 def test_target_color_becomes_transparent(tmp_path):
@@ -107,6 +154,101 @@ def test_edge_erosion_eats_into_opaque(tmp_path):
                             feather=0, decontaminate=False, edge_erosion=1)
     eroded = np.array(Image.open(out_p))
     assert eroded[2, 2, 3] == 0
+
+
+# ---------- remove_color: multi-color (target_colors) ----------
+
+def test_remove_color_with_two_target_colors(tmp_path):
+    """두 배경색 + 다른 전경 → 두 배경 모두 투명, 전경 보존."""
+    arr = np.zeros((6, 6, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:3, :, :3] = [10, 20, 30]         # 상단: 색 A
+    arr[3:, :, :3] = [200, 100, 50]       # 하단: 색 B
+    arr[2:4, 2:4, :3] = [80, 80, 80]      # 중앙: 전경 C
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_colors=[(10, 20, 30), (200, 100, 50)],
+                            tolerance=5, feather=0,
+                            decontaminate=False, edge_erosion=0)
+    out = np.array(Image.open(out_p))
+    assert out[0, 0, 3] == 0       # 색 A 영역 투명
+    assert out[5, 5, 3] == 0       # 색 B 영역 투명
+    assert out[2, 2, 3] == 255     # 전경 보존
+    assert tuple(out[2, 2, :3]) == (80, 80, 80)
+
+
+def test_remove_color_rejects_both_target_arguments(tmp_path):
+    arr = _solid((255, 37, 255), (4, 4))
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+    with pytest.raises(ValueError, match="동시"):
+        imageAlpha.remove_color(str(in_p), str(out_p),
+                                target_color=(255, 37, 255),
+                                target_colors=[(255, 37, 255)])
+
+
+def test_remove_color_rejects_empty_target_colors(tmp_path):
+    arr = _solid((255, 37, 255), (4, 4))
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+    with pytest.raises(ValueError, match="비어"):
+        imageAlpha.remove_color(str(in_p), str(out_p), target_colors=[])
+
+
+def test_remove_color_auto_detects_multi_colors_when_both_none(tmp_path):
+    """둘 다 None → 자동 다색 감지 후 두 색 모두 투명화."""
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:5, :, :3] = [10, 20, 30]
+    arr[5:, :, :3] = [200, 100, 50]
+    arr[4:6, 4:6, :3] = [80, 80, 80]
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_color=None, target_colors=None,
+                            tolerance=5, feather=0,
+                            decontaminate=False, edge_erosion=0)
+    out = np.array(Image.open(out_p))
+    assert out[0, 0, 3] == 0
+    assert out[9, 9, 3] == 0
+
+
+def test_remove_color_decontaminate_uses_nearest_color(tmp_path):
+    """다색 + feather + decontaminate 가 픽셀별 nearest target 으로 동작하는지 검증.
+
+    상단 픽셀(색 A 근처)은 A 기준으로, 하단 픽셀(색 B 근처)은 B 기준으로
+    decontamination 이 일어나야 한다.
+    """
+    arr = np.zeros((4, 4, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[..., :3] = [128, 128, 128]   # 중립 회색 — A/B 양쪽 모두에서 distance 큼
+    # A 와 B 양 끝 색을 직접 박아 nearest 판정을 가르도록
+    arr[0, 0, :3] = [10, 20, 30]      # 색 A 자체
+    arr[3, 3, :3] = [200, 100, 50]    # 색 B 자체
+    # feather zone 안에 들어올 픽셀: A 에서 거리 ~30 인 픽셀
+    arr[0, 1, :3] = [40, 20, 30]      # A 와 거리 30 (≤ tol+feather)
+    # B 와 거리 ~30 인 픽셀
+    arr[3, 2, :3] = [200, 100, 80]    # B 와 거리 30
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            target_colors=[(10, 20, 30), (200, 100, 50)],
+                            tolerance=10, feather=50,
+                            decontaminate=True, edge_erosion=0)
+    out = np.array(Image.open(out_p))
+    # 핵심: feather 픽셀에서 nearest 색의 채널이 빠져야 함.
+    # arr[0,1] 은 A 와 가깝다 → A 기준 decontaminate → R 채널이 (40 - t*10)/(1-t) 로 보정
+    # arr[3,2] 는 B 와 가깝다 → B 기준 decontaminate → B 채널이 (80 - t*50)/(1-t) 로 보정
+    # 두 픽셀의 alpha 가 partial (0 < α < 255) 이고 RGB 가 원본과 달라야 한다.
+    assert 0 < out[0, 1, 3] < 255
+    assert 0 < out[3, 2, 3] < 255
+    # nearest 가 잘못 갈리면 RGB 가 원본과 동일(=영향 없음)하거나 엉뚱한 색 빠짐
+    assert tuple(out[0, 1, :3]) != (40, 20, 30)
+    assert tuple(out[3, 2, :3]) != (200, 100, 80)
 
 
 # ---------- process_folder ----------
@@ -424,6 +566,94 @@ def test_cli_from_clipboard_errors_when_empty(tmp_path, monkeypatch, capsys):
         imageAlpha._run_cli()
     assert ei.value.code != 0
     assert "클립보드" in capsys.readouterr().err
+
+
+# ---------- CLI --target-color / --auto ----------
+
+def test_parse_rgb_valid():
+    assert imageAlpha._parse_rgb("255,37,255") == (255, 37, 255)
+    assert imageAlpha._parse_rgb(" 0 , 0 , 0 ") == (0, 0, 0)
+
+
+def test_parse_rgb_rejects_bad_format():
+    with pytest.raises(ValueError, match="형식"):
+        imageAlpha._parse_rgb("255,37")
+    with pytest.raises(ValueError, match="정수"):
+        imageAlpha._parse_rgb("a,b,c")
+    with pytest.raises(ValueError, match="0~255"):
+        imageAlpha._parse_rgb("300,0,0")
+
+
+def test_cli_target_color_single(tmp_path, monkeypatch):
+    """--target-color 한 번 지정 시 그 색만 제거."""
+    monkeypatch.chdir(tmp_path)
+    base = tmp_path / "base"
+    base.mkdir()
+    _save(_solid((10, 20, 30)), base / "a.png")
+    monkeypatch.setattr(
+        sys, "argv", ["chromapeel-cli", "--target-color", "10,20,30"],
+    )
+    imageAlpha._run_cli()
+    out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
+    assert (out[..., 3] == 0).all()  # 지정 색이 모두 투명
+
+
+def test_cli_target_color_multi(tmp_path, monkeypatch):
+    """--target-color 두 번 → 두 색 모두 제거."""
+    monkeypatch.chdir(tmp_path)
+    base = tmp_path / "base"
+    base.mkdir()
+    arr = np.zeros((6, 6, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:3, :, :3] = [10, 20, 30]
+    arr[3:, :, :3] = [200, 100, 50]
+    _save(arr, base / "a.png")
+    monkeypatch.setattr(
+        sys, "argv",
+        ["chromapeel-cli", "-t", "10,20,30", "-t", "200,100,50"],
+    )
+    imageAlpha._run_cli()
+    out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
+    assert (out[..., 3] == 0).all()  # 두 색 모두 투명
+
+
+def test_cli_auto_detects_background(tmp_path, monkeypatch):
+    """--auto 는 테두리에서 자동 다색 감지."""
+    monkeypatch.chdir(tmp_path)
+    base = tmp_path / "base"
+    base.mkdir()
+    arr = _solid((123, 45, 67), (10, 10))
+    # 전경은 (a) tolerance+feather 밖이고 (b) edge_erosion=1 에서 살아남도록 충분히 크게.
+    arr[2:8, 2:8] = [0, 255, 0, 255]
+    _save(arr, base / "a.png")
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--auto"])
+    imageAlpha._run_cli()
+    out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
+    assert out[0, 0, 3] == 0      # 테두리 색은 자동 감지되어 투명
+    assert out[5, 5, 3] == 255    # 전경 중앙 보존
+
+
+def test_cli_rejects_target_color_with_auto(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "base").mkdir()
+    monkeypatch.setattr(
+        sys, "argv",
+        ["chromapeel-cli", "--auto", "-t", "10,20,30"],
+    )
+    with pytest.raises(SystemExit):
+        imageAlpha._run_cli()
+    assert "동시에" in capsys.readouterr().err
+
+
+def test_cli_rejects_invalid_target_color(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "base").mkdir()
+    monkeypatch.setattr(
+        sys, "argv", ["chromapeel-cli", "-t", "not,a,color"],
+    )
+    with pytest.raises(SystemExit):
+        imageAlpha._run_cli()
+    assert "정수" in capsys.readouterr().err
 
 
 def test_cli_from_clipboard_handles_pil_exception(tmp_path, monkeypatch, capsys):

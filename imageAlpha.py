@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 from typing import Callable, Optional
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,22 @@ APP_DEFAULT_AUTO_TRIM = False
 APP_DEFAULT_TRIM_PADDING = 0
 
 
-def detect_background_color(data: np.ndarray) -> RGB:
-    """이미지의 1픽셀 테두리에서 최빈 RGB 색상을 반환합니다.
+def detect_background_colors(
+    data: np.ndarray,
+    min_ratio: float = 0.05,
+    max_k: int = 8,
+) -> list[RGB]:
+    """테두리에서 지배색을 빈도 내림차순으로 반환합니다 (동적 k).
+
+    최빈색 1개는 비율과 무관하게 반드시 포함, 이후 색은 비율 >= min_ratio 인 것만
+    max_k 개까지 채택합니다.
+
+    정렬은 (count desc, R asc, G asc, B asc) 로 — JS 포트와 byte-for-byte 결과
+    동등성을 위해 결정론적 tie-break 을 강제합니다.
 
     :param data: (H, W, 3+) 형태의 RGB 또는 RGBA 배열 (uint8 또는 float)
+    :param min_ratio: 추가 색 채택을 위한 최소 비율 (테두리 픽셀 대비)
+    :param max_k: 반환할 최대 색상 수 (>= 1)
     """
     rgb = data[..., :3].astype(np.uint8)
     border = np.concatenate([
@@ -43,8 +55,33 @@ def detect_background_color(data: np.ndarray) -> RGB:
         rgb[:, -1, :],
     ])
     colors, counts = np.unique(border, axis=0, return_counts=True)
-    best = colors[counts.argmax()]
-    return (int(best[0]), int(best[1]), int(best[2]))
+    total = int(counts.sum())
+
+    # lexsort 는 마지막 key 가 primary. count desc(=-count asc) 가 primary,
+    # 동률 시 R, G, B asc 순. uint64 → -count 의 wraparound 방지 위해 int64.
+    order = np.lexsort((
+        colors[:, 2], colors[:, 1], colors[:, 0],
+        -counts.astype(np.int64),
+    ))
+    sorted_colors = colors[order]
+    sorted_counts = counts[order]
+
+    accepted: list[RGB] = []
+    for c, cnt in zip(sorted_colors, sorted_counts):
+        if accepted and (cnt / total) < min_ratio:
+            break
+        accepted.append((int(c[0]), int(c[1]), int(c[2])))
+        if len(accepted) >= max_k:
+            break
+    return accepted
+
+
+def detect_background_color(data: np.ndarray) -> RGB:
+    """테두리 최빈 RGB 단일 색을 반환합니다 (역호환 wrapper).
+
+    :param data: (H, W, 3+) 형태의 RGB 또는 RGBA 배열 (uint8 또는 float)
+    """
+    return detect_background_colors(data, min_ratio=0.0, max_k=1)[0]
 
 
 def trim_transparent_edges(
@@ -86,7 +123,7 @@ def trim_transparent_edges(
 def remove_color(
     input_path: str,
     output_path: str,
-    target_color: Optional[RGB],
+    target_color: Optional[RGB] = None,
     tolerance: int = 30,
     feather: int = 0,
     decontaminate: bool = True,
@@ -94,31 +131,49 @@ def remove_color(
     auto_trim: bool = False,
     trim_padding: int = 0,
     trim_alpha_threshold: int = 0,
+    target_colors: Optional[list[RGB]] = None,
 ) -> None:
     """
-    특정 색상을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 + 자동 트림 지원.
+    특정 색상(들)을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 + 자동 트림 지원.
 
     :param input_path: 입력 이미지 경로
     :param output_path: 출력 이미지 경로 (PNG 권장)
-    :param target_color: 제거할 색상 (R, G, B) 튜플. 예: (255, 255, 255) = 흰색. None이면 이미지 테두리에서 자동 감지
+    :param target_color: 단일 제거 색상 (R, G, B). target_colors 와 동시 지정 불가. 둘 다 None 이면 테두리에서 자동 다색 감지.
     :param tolerance: 완전 투명으로 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위. tolerance~(tolerance+feather) 구간은 선형 그라데이션으로 알파 적용
-    :param decontaminate: True면 반투명 엣지 픽셀에서 타겟 색상 성분을 빼서 핑크/컬러 프린지 제거
+    :param decontaminate: True면 반투명 엣지 픽셀에서 (가장 가까운) 타겟 색상 성분을 빼서 핑크/컬러 프린지 제거
     :param edge_erosion: 투명 영역과 인접한 불투명 픽셀을 N픽셀만큼 깎음 (잔여 프린지 제거). 얇은 피처 유실 주의.
     :param auto_trim: True면 저장 직전에 알파 bbox로 잘라 투명 외곽을 제거합니다.
     :param trim_padding: auto_trim bbox 사방에 추가할 여유 픽셀 수.
     :param trim_alpha_threshold: 이 값을 초과하는 알파만 bbox 계산에 포함 (기본 0 = 완전 투명만 자르기).
+    :param target_colors: 다색 제거 — RGB 튜플 리스트. 각 픽셀은 가장 가까운 타겟 색상 기준으로 판정.
+        target_color 와 동시 지정 불가. 둘 다 None 이면 detect_background_colors 로 자동 다색 감지.
     """
+    if target_color is not None and target_colors is not None:
+        raise ValueError("target_color 와 target_colors 는 동시에 지정할 수 없습니다.")
+
     img = Image.open(input_path).convert("RGBA")
     data = np.array(img).astype(np.float32)
 
-    if target_color is None:
-        target_color = detect_background_color(data)
+    if target_colors is not None:
+        if len(target_colors) == 0:
+            raise ValueError("target_colors 가 비어 있습니다.")
+        colors: list[RGB] = [(int(c[0]), int(c[1]), int(c[2])) for c in target_colors]
+    elif target_color is not None:
+        colors = [(int(target_color[0]), int(target_color[1]), int(target_color[2]))]
+    else:
+        colors = detect_background_colors(data)
 
     r, g, b, a = data[..., 0], data[..., 1], data[..., 2], data[..., 3]
-    tr, tg, tb = target_color
 
-    distance = np.maximum.reduce([np.abs(r - tr), np.abs(g - tg), np.abs(b - tb)])
+    # 각 타겟 색마다 max-channel distance 를 stack → (K, H, W).
+    # K=1 일 때 단일-색 경로와 byte-for-byte 동일 (argmin 결과 모두 0).
+    dist_stack = np.stack([
+        np.maximum.reduce([np.abs(r - tc[0]), np.abs(g - tc[1]), np.abs(b - tc[2])])
+        for tc in colors
+    ])
+    nearest_idx = np.argmin(dist_stack, axis=0)
+    distance = np.take_along_axis(dist_stack, nearest_idx[None, ...], axis=0)[0]
 
     alpha_mult = np.ones_like(distance, dtype=np.float32)
     alpha_mult[distance <= tolerance] = 0.0
@@ -128,12 +183,18 @@ def remove_color(
         alpha_mult[feather_zone] = (distance[feather_zone] - tolerance) / feather
 
         if decontaminate:
-            # observed = t * target + (1-t) * original,  where t = 1 - alpha_mult
+            # observed = t * target + (1-t) * original,  where t = 1 - alpha_mult.
+            # 다색일 땐 픽셀마다 nearest target 색상으로 분리해 decontaminate.
             t = 1.0 - alpha_mult[feather_zone]
             denom = np.maximum(1.0 - t, 1e-6)
-            for ch, tc in zip((0, 1, 2), (tr, tg, tb)):
+            colors_arr = np.array(colors, dtype=np.float32)   # (K, 3)
+            nearest_colors = colors_arr[nearest_idx]          # (H, W, 3)
+            for ch in (0, 1, 2):
+                tc_at_pixel = nearest_colors[..., ch][feather_zone]
                 observed = data[..., ch][feather_zone]
-                data[..., ch][feather_zone] = np.clip((observed - t * tc) / denom, 0, 255)
+                data[..., ch][feather_zone] = np.clip(
+                    (observed - t * tc_at_pixel) / denom, 0, 255
+                )
 
     data[..., 3] = a * alpha_mult
 
@@ -164,7 +225,7 @@ def remove_color(
 def process_folder(
     input_dir: str,
     output_dir: str,
-    target_color: Optional[RGB],
+    target_color: Optional[RGB] = None,
     tolerance: int = 30,
     feather: int = 0,
     decontaminate: bool = True,
@@ -174,16 +235,17 @@ def process_folder(
     trim_alpha_threshold: int = 0,
     progress_callback: Optional[ProgressCallback] = None,
     max_workers: Optional[int] = None,
+    target_colors: Optional[list[RGB]] = None,
 ) -> None:
     """
     input_dir 내 모든 PNG 이미지에 알파 처리를 적용해 output_dir에 저장합니다.
 
     :param input_dir: 입력 폴더 경로
     :param output_dir: 출력 폴더 경로 (없으면 자동 생성)
-    :param target_color: 제거할 색상 (R, G, B) 튜플. None이면 파일별로 테두리 기반 자동 감지
+    :param target_color: 단일 제거 색상. target_colors 와 동시 지정 불가. 둘 다 None 이면 파일별 자동 다색 감지.
     :param tolerance: 완전 투명 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위
-    :param decontaminate: 엣지 색상 프린지 제거 여부
+    :param decontaminate: 엣지 색상 프린지 제거 여부 (다색이면 픽셀별 nearest target 으로 적용)
     :param edge_erosion: 엣지 침식 픽셀 수 (잔여 프린지 제거)
     :param auto_trim: True면 저장 직전 알파 bbox로 투명 외곽을 잘라냄 (전체 투명 시 원본 유지)
     :param trim_padding: auto_trim bbox 사방으로 추가할 여유 픽셀 수
@@ -197,6 +259,8 @@ def process_folder(
         None(기본) — `min(os.cpu_count(), 파일 수)` 자동 결정.
         1 — 순차 처리 (입력 순서대로 콜백 보장; 결정적 동작이 필요할 때).
         N — N개 스레드로 병렬 처리.
+    :param target_colors: 다색 제거 — RGB 튜플 리스트. target_color 와 동시 지정 불가.
+        둘 다 None 이면 파일별로 detect_background_colors 자동 감지.
     """
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -226,7 +290,8 @@ def process_folder(
             remove_color(str(file), str(out_file), target_color, tolerance,
                          feather, decontaminate, edge_erosion,
                          auto_trim=auto_trim, trim_padding=trim_padding,
-                         trim_alpha_threshold=trim_alpha_threshold)
+                         trim_alpha_threshold=trim_alpha_threshold,
+                         target_colors=target_colors)
             return file, out_file, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
@@ -252,6 +317,20 @@ def process_folder(
             _emit(i, in_file, out_file, err)
 
 
+def _parse_rgb(s: str) -> RGB:
+    """CLI 의 'R,G,B' 문자열을 (int, int, int) 로 파싱."""
+    parts = s.split(",")
+    if len(parts) != 3:
+        raise ValueError(f"색상 형식이 잘못됨: {s!r} (예: '255,37,255')")
+    try:
+        r, g, b = (int(p.strip()) for p in parts)
+    except ValueError:
+        raise ValueError(f"색상 값은 정수여야 함: {s!r}")
+    if not (0 <= r <= 255 and 0 <= g <= 255 and 0 <= b <= 255):
+        raise ValueError(f"색상 값은 0~255 범위여야 함: {s!r}")
+    return (r, g, b)
+
+
 def _run_cli() -> None:
     import argparse
     from clipboard_utils import stage_clipboard_image_or_exit
@@ -259,6 +338,17 @@ def _run_cli() -> None:
     parser = argparse.ArgumentParser(
         prog="chromapeel-cli",
         description="base/ 폴더의 PNG에서 크로마 키를 제거해 alpha/ 폴더로 저장합니다.",
+    )
+    parser.add_argument(
+        "--target-color", "-t",
+        action="append", default=None, metavar="R,G,B",
+        help='제거할 색상 ("R,G,B" 형식). 여러 번 지정하면 다색 제거. '
+             '미지정 시 기본 마젠타 (255,37,255) 사용.',
+    )
+    parser.add_argument(
+        "--auto", action="store_true",
+        help="대상 색상을 이미지 테두리에서 자동 감지 (다색 가능). "
+             "--target-color 와 동시 지정 불가.",
     )
     parser.add_argument("--auto-trim", action="store_true",
                         help="저장 직전에 알파 bbox로 투명 외곽을 잘라냅니다.")
@@ -268,21 +358,35 @@ def _run_cli() -> None:
                         help="클립보드의 이미지를 base/ 에 저장한 뒤 그 파일만 처리합니다.")
     args = parser.parse_args()
 
+    if args.target_color and args.auto:
+        parser.error("--target-color 와 --auto 는 동시에 지정할 수 없습니다.")
+
+    if args.auto:
+        target_colors: Optional[list[RGB]] = None
+    elif args.target_color:
+        try:
+            target_colors = [_parse_rgb(s) for s in args.target_color]
+        except ValueError as e:
+            parser.error(str(e))
+    else:
+        target_colors = [APP_DEFAULT_TARGET_COLOR]
+
+    common_kwargs = dict(
+        tolerance=APP_DEFAULT_TOLERANCE,
+        feather=APP_DEFAULT_FEATHER,
+        decontaminate=APP_DEFAULT_DECONTAMINATE,
+        edge_erosion=APP_DEFAULT_EDGE_EROSION,
+        auto_trim=args.auto_trim,
+        trim_padding=args.trim_padding,
+        target_colors=target_colors,
+    )
+
     if args.from_clipboard:
         in_path = stage_clipboard_image_or_exit("base")
         out_dir = Path("alpha")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / in_path.name
-        remove_color(
-            str(in_path), str(out_path),
-            target_color=APP_DEFAULT_TARGET_COLOR,
-            tolerance=APP_DEFAULT_TOLERANCE,
-            feather=APP_DEFAULT_FEATHER,
-            decontaminate=APP_DEFAULT_DECONTAMINATE,
-            edge_erosion=APP_DEFAULT_EDGE_EROSION,
-            auto_trim=args.auto_trim,
-            trim_padding=args.trim_padding,
-        )
+        remove_color(str(in_path), str(out_path), **common_kwargs)
         print(f"완료: {out_path.name}")
         return
 
@@ -296,14 +400,8 @@ def _run_cli() -> None:
     process_folder(
         input_dir="base",
         output_dir="alpha",
-        target_color=APP_DEFAULT_TARGET_COLOR,
-        tolerance=APP_DEFAULT_TOLERANCE,
-        feather=APP_DEFAULT_FEATHER,
-        decontaminate=APP_DEFAULT_DECONTAMINATE,
-        edge_erosion=APP_DEFAULT_EDGE_EROSION,
-        auto_trim=args.auto_trim,
-        trim_padding=args.trim_padding,
         progress_callback=_cli_progress,
+        **common_kwargs,
     )
 
 

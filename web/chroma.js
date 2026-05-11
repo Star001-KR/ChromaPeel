@@ -3,7 +3,7 @@
 // chroma and grid views since the source image is shared via state.
 import { state } from './state.js';
 import { $, setStatus } from './dom.js';
-import { detectBackgroundColor, processImage } from './algorithm.js';
+import { detectBackgroundColors, processImage } from './algorithm.js';
 import { sanitizeStem } from './util.js';
 import {
   drawGridPreview,
@@ -25,20 +25,52 @@ function hexToRgb(hex) {
   return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
 }
 
-function setColorUI(rgb) {
-  state.targetColor = rgb;
-  $('colorPicker').value = rgbToHex(rgb);
-  $('colorLabel').textContent = `(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+function renderColorRows() {
+  const container = $('colorsContainer');
+  container.innerHTML = '';
+  const colors = state.targetColors;
+  colors.forEach((rgb, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'color-chip';
+    const picker = document.createElement('input');
+    picker.type = 'color';
+    picker.value = rgbToHex(rgb);
+    picker.dataset.idx = String(idx);
+    picker.addEventListener('input', (e) => {
+      state.targetColors[idx] = hexToRgb(e.target.value);
+      // 라벨만 in-place 갱신해 reflow 최소화
+      label.textContent = `(${state.targetColors[idx].join(', ')})`;
+      schedule();
+    });
+    chip.appendChild(picker);
+    const label = document.createElement('span');
+    label.className = 'color-label muted';
+    label.textContent = `(${rgb.join(', ')})`;
+    chip.appendChild(label);
+    if (colors.length > 1) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'color-remove ghost';
+      remove.setAttribute('aria-label', '색상 제거');
+      remove.textContent = '✕';
+      remove.addEventListener('click', () => {
+        state.targetColors.splice(idx, 1);
+        renderColorRows();
+        schedule();
+      });
+      chip.appendChild(remove);
+    }
+    container.appendChild(chip);
+  });
 }
 
 function syncAutoDetectUI() {
   const auto = state.autoDetect;
-  $('colorPicker').disabled = auto;
-  $('colorLabel').classList.toggle('muted', auto);
+  $('colorsContainer').classList.toggle('disabled', auto);
+  $('addColorBtn').disabled = auto;
   if (auto && state.sourceImageData) {
-    const detected = detectBackgroundColor(state.sourceImageData);
-    setColorUI(detected);
-    $('colorLabel').textContent = `(${detected[0]}, ${detected[1]}, ${detected[2]}) — 자동`;
+    state.targetColors = detectBackgroundColors(state.sourceImageData);
+    renderColorRows();
   }
 }
 
@@ -144,7 +176,7 @@ function runProcess() {
   requestAnimationFrame(() => {
     const t0 = performance.now();
     const result = processImage(state.sourceImageData, {
-      targetColor: state.targetColor,
+      targetColors: state.targetColors,
       tolerance: state.tolerance,
       feather: state.feather,
       decontaminate: state.decontaminate,
@@ -242,8 +274,13 @@ export function initChroma() {
     if (file) loadFile(file);
   });
 
-  $('colorPicker').addEventListener('input', (e) => {
-    setColorUI(hexToRgb(e.target.value));
+  $('addColorBtn').addEventListener('click', () => {
+    if (state.autoDetect) return;
+    const seed = state.targetColors.length
+      ? state.targetColors[state.targetColors.length - 1]
+      : [255, 37, 255];
+    state.targetColors.push([...seed]);
+    renderColorRows();
     schedule();
   });
 
@@ -280,7 +317,7 @@ export function initChroma() {
     state.decontaminate = true;
     state.edgeErosion = 1;
     state.autoDetect = false;
-    state.targetColor = [255, 37, 255];
+    state.targetColors = [[255, 37, 255]];
     state.autoTrim = false;
     state.trimPadding = 0;
     $('tolerance').value = 20; $('toleranceVal').textContent = '20';
@@ -290,7 +327,7 @@ export function initChroma() {
     $('autoDetect').checked = false;
     $('autoTrim').checked = false;
     $('trimPadding').value = 0; $('trimPaddingVal').textContent = '0';
-    setColorUI([255, 37, 255]);
+    renderColorRows();
     syncAutoDetectUI();
     schedule();
     setStatus('기본값으로 복원');
@@ -298,6 +335,6 @@ export function initChroma() {
 
   $('saveBtn').addEventListener('click', saveOrShare);
 
-  setColorUI(state.targetColor);
+  renderColorRows();
   setStatus('PNG / JPG / WebP 이미지를 선택하거나 드래그하세요');
 }

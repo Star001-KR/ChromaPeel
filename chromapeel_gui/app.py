@@ -47,7 +47,7 @@ class ChromaPeelApp:
         BASE_DIR.mkdir(exist_ok=True)
         ALPHA_DIR.mkdir(exist_ok=True)
 
-        self.target_color: tuple[int, int, int] = APP_DEFAULT_TARGET_COLOR
+        self.target_colors: list[tuple[int, int, int]] = [APP_DEFAULT_TARGET_COLOR]
         self.tolerance = tk.IntVar(value=APP_DEFAULT_TOLERANCE)
         self.feather = tk.IntVar(value=APP_DEFAULT_FEATHER)
         self.decontaminate = tk.BooleanVar(value=APP_DEFAULT_DECONTAMINATE)
@@ -139,19 +139,28 @@ class ChromaPeelApp:
     def _build_advanced(self, parent):
         color_row = ttk.Frame(parent)
         color_row.pack(fill="x", pady=3)
-        ttk.Label(color_row, text="대상 색상:", width=14).pack(side="left")
-        self.color_swatch = tk.Label(color_row, text="  ", bg=self._rgb_to_hex(self.target_color),
-                                      width=4, relief="solid", bd=1)
-        self.color_swatch.pack(side="left", padx=4)
-        self.color_label = ttk.Label(color_row, text=str(self.target_color))
-        self.color_label.pack(side="left", padx=4)
-        self.pick_color_btn = ttk.Button(color_row, text="색상 선택", command=self._pick_color)
-        self.pick_color_btn.pack(side="left", padx=4)
+        ttk.Label(color_row, text="대상 색상:", width=14).pack(side="left", anchor="n")
+
+        # 우측 컨트롤 (자동 감지 / + 색상 추가) 를 먼저 pack 해 우측 고정
+        right = ttk.Frame(color_row)
+        right.pack(side="right", anchor="n")
+        self.add_color_btn = ttk.Button(
+            right, text="+ 색상 추가", command=self._add_color, width=12,
+        )
+        self.add_color_btn.pack(side="top", anchor="e")
         ttk.Checkbutton(
-            color_row, text="자동 감지",
-            variable=self.auto_detect_bg,
+            right, text="자동 감지", variable=self.auto_detect_bg,
             command=self._update_color_ui_state,
-        ).pack(side="left", padx=12)
+        ).pack(side="top", anchor="e", pady=(2, 0))
+
+        # 색 행 컨테이너 (동적 — _render_color_rows 가 채움)
+        self.colors_container = ttk.Frame(color_row)
+        self.colors_container.pack(side="left", fill="x", expand=True)
+
+        # 자동 감지 ON 일 때 colors_container 자리에 표시
+        self.auto_color_label = ttk.Label(color_row, text="(파일별 자동)", foreground="#888")
+
+        self._render_color_rows()
 
         self._build_scale_row(parent, "Tolerance:", self.tolerance, 0, 255)
         self._build_scale_row(parent, "Feather:", self.feather, 0, 300)
@@ -191,30 +200,69 @@ class ChromaPeelApp:
             self.btn_toggle.configure(text="▾ 고급 설정")
             self.advanced_visible = True
 
-    def _pick_color(self):
+    def _render_color_rows(self) -> None:
+        for child in self.colors_container.winfo_children():
+            child.destroy()
+        for idx, rgb in enumerate(self.target_colors):
+            row = ttk.Frame(self.colors_container)
+            row.pack(side="top", fill="x", anchor="w", pady=1)
+            swatch = tk.Label(
+                row, text="  ", bg=self._rgb_to_hex(rgb),
+                width=4, relief="solid", bd=1, cursor="hand2",
+            )
+            swatch.pack(side="left", padx=4)
+            swatch.bind("<Button-1>", lambda e, i=idx: self._pick_color(i))
+            ttk.Label(row, text=str(rgb)).pack(side="left", padx=4)
+            if len(self.target_colors) > 1:
+                ttk.Button(
+                    row, text="✕", width=3,
+                    command=lambda i=idx: self._remove_color(i),
+                ).pack(side="left", padx=2)
+
+    def _pick_color(self, idx: int = 0) -> None:
+        if self.auto_detect_bg.get():
+            return
+        current = self.target_colors[idx]
         color = colorchooser.askcolor(
-            initialcolor=self._rgb_to_hex(self.target_color),
-            title="대상 색상 선택",
+            initialcolor=self._rgb_to_hex(current),
+            title=f"색상 {idx + 1} 선택",
         )
         if color[0] is None:
             return
-        rgb = tuple(int(c) for c in color[0])
-        self.target_color = rgb
-        self.color_swatch.configure(bg=self._rgb_to_hex(rgb))
-        self.color_label.configure(text=str(rgb))
+        self.target_colors[idx] = tuple(int(c) for c in color[0])
+        self._render_color_rows()
+
+    def _add_color(self) -> None:
+        if self.auto_detect_bg.get():
+            return
+        seed = self.target_colors[-1] if self.target_colors else APP_DEFAULT_TARGET_COLOR
+        color = colorchooser.askcolor(
+            initialcolor=self._rgb_to_hex(seed),
+            title="추가할 색상 선택",
+        )
+        if color[0] is None:
+            return
+        self.target_colors.append(tuple(int(c) for c in color[0]))
+        self._render_color_rows()
+
+    def _remove_color(self, idx: int) -> None:
+        if len(self.target_colors) <= 1:
+            return
+        self.target_colors.pop(idx)
+        self._render_color_rows()
 
     def _update_color_ui_state(self) -> None:
-        if self.auto_detect_bg.get():
-            self.color_swatch.configure(bg="#d0d0d0")
-            self.color_label.configure(text="(파일별 자동)")
-            self.pick_color_btn.configure(state="disabled")
+        auto = self.auto_detect_bg.get()
+        if auto:
+            self.colors_container.pack_forget()
+            self.auto_color_label.pack(side="left", padx=4)
         else:
-            self.color_swatch.configure(bg=self._rgb_to_hex(self.target_color))
-            self.color_label.configure(text=str(self.target_color))
-            self.pick_color_btn.configure(state="normal")
+            self.auto_color_label.pack_forget()
+            self.colors_container.pack(side="left", fill="x", expand=True)
+        self.add_color_btn.configure(state="disabled" if auto else "normal")
 
     def _reset_defaults(self):
-        self.target_color = APP_DEFAULT_TARGET_COLOR
+        self.target_colors = [APP_DEFAULT_TARGET_COLOR]
         self.tolerance.set(APP_DEFAULT_TOLERANCE)
         self.feather.set(APP_DEFAULT_FEATHER)
         self.decontaminate.set(APP_DEFAULT_DECONTAMINATE)
@@ -222,6 +270,7 @@ class ChromaPeelApp:
         self.auto_detect_bg.set(DEFAULT_AUTO_DETECT_BG)
         self.auto_trim.set(APP_DEFAULT_AUTO_TRIM)
         self.trim_padding.set(APP_DEFAULT_TRIM_PADDING)
+        self._render_color_rows()
         self._update_color_ui_state()
         self._set_status("기본값으로 복원")
 
@@ -529,7 +578,7 @@ class ChromaPeelApp:
         self._set_status(f"0/{len(inputs)} 변환 시작...")
 
         params = {
-            "target_color": None if self.auto_detect_bg.get() else self.target_color,
+            "target_colors": None if self.auto_detect_bg.get() else list(self.target_colors),
             "tolerance": int(self.tolerance.get()),
             "feather": int(self.feather.get()),
             "decontaminate": bool(self.decontaminate.get()),

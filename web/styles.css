@@ -306,6 +306,46 @@ button.ghost {
 }
 .muted { color: var(--muted); font-size: 13px; }
 
+.colors-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1 1 auto;
+}
+.colors-container.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+.color-chip input[type="color"] {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.color-chip .color-label {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.color-chip .color-remove {
+  padding: 0 6px;
+  min-height: 24px;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
 .status {
   margin: 0;
   padding: 6px 4px;

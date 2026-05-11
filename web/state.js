@@ -9,7 +9,9 @@ export const state = {
   processedURL: null,
   // chroma params
   autoDetect: false,
-  targetColor: [255, 37, 255],
+  // 다색 chroma key — 모든 항목이 (어느 한 색에라도 가까우면 배경) 조건으로 합성됨.
+  // 단일 색일 땐 길이 1 배열.
+  targetColors: [[255, 37, 255]],
   tolerance: 20,
   feather: 100,
   decontaminate: true,

@@ -26,6 +26,7 @@ Result of processing a sprite sheet with a magenta `(255, 37, 255)` background.
 - **Thumbnail interactions** — double-click to open in the default viewer; right-click for copy image to clipboard / copy path / reveal in Explorer / **(output) rename** / (input) remove
 - **Batch progress bar** — tracks N/M progress during multi-file conversion
 - **Background auto-detection (optional)** — one checkbox detects the background color from each image's border, so batches with mixed backgrounds work in a single pass
+- **Multi-color chroma key** — pass `--target-color` repeatedly on the CLI, or click "+ 색상 추가" in the GUI, to remove several background colors from one image (gradient magenta, two-tone backgrounds, etc.) in a single pass. Auto-detection is multi-color aware; decontaminate in the feather band picks the nearest target color per pixel
 - Converts a target color to alpha (chroma key removal)
 - **Feather gradient** — soft fade on edge pixels
 - **Color Decontamination** — removes background-color tint from semi-transparent pixels
