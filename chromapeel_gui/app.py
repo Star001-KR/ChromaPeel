@@ -31,6 +31,7 @@ from clipboard_utils import (
 
 from . import ALPHA_DIR, BASE_DIR, _open_path, _reveal_path
 from .dialogs import GridSplitDialog, ManualCropDialog
+from .settings_store import load_settings, save_settings
 from .widgets import ThumbnailView
 
 logger = logging.getLogger(__name__)
@@ -50,14 +51,15 @@ class ChromaPeelApp:
         BASE_DIR.mkdir(exist_ok=True)
         ALPHA_DIR.mkdir(exist_ok=True)
 
-        self.target_colors: list[tuple[int, int, int]] = [APP_DEFAULT_TARGET_COLOR]
-        self.tolerance = tk.IntVar(value=APP_DEFAULT_TOLERANCE)
-        self.feather = tk.IntVar(value=APP_DEFAULT_FEATHER)
-        self.decontaminate = tk.BooleanVar(value=APP_DEFAULT_DECONTAMINATE)
-        self.edge_erosion = tk.IntVar(value=APP_DEFAULT_EDGE_EROSION)
-        self.auto_detect_bg = tk.BooleanVar(value=DEFAULT_AUTO_DETECT_BG)
-        self.auto_trim = tk.BooleanVar(value=APP_DEFAULT_AUTO_TRIM)
-        self.trim_padding = tk.IntVar(value=APP_DEFAULT_TRIM_PADDING)
+        loaded = load_settings()
+        self.target_colors: list[tuple[int, int, int]] = list(loaded["target_colors"])
+        self.tolerance = tk.IntVar(value=loaded["tolerance"])
+        self.feather = tk.IntVar(value=loaded["feather"])
+        self.decontaminate = tk.BooleanVar(value=loaded["decontaminate"])
+        self.edge_erosion = tk.IntVar(value=loaded["edge_erosion"])
+        self.auto_detect_bg = tk.BooleanVar(value=loaded["auto_detect_bg"])
+        self.auto_trim = tk.BooleanVar(value=loaded["auto_trim"])
+        self.trim_padding = tk.IntVar(value=loaded["trim_padding"])
 
         self.advanced_visible = False
         self.processing = False
@@ -69,6 +71,7 @@ class ChromaPeelApp:
 
         self.root.bind("<Control-v>", self._on_paste_shortcut)
         self.root.bind("<Command-v>", self._on_paste_shortcut)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self):
         root = self.root
@@ -708,6 +711,25 @@ class ChromaPeelApp:
 
     def _set_status(self, text: str):
         self.status.set(text)
+
+    def _current_settings_snapshot(self) -> dict:
+        return {
+            "target_colors": [list(rgb) for rgb in self.target_colors],
+            "tolerance": int(self.tolerance.get()),
+            "feather": int(self.feather.get()),
+            "decontaminate": bool(self.decontaminate.get()),
+            "edge_erosion": int(self.edge_erosion.get()),
+            "auto_detect_bg": bool(self.auto_detect_bg.get()),
+            "auto_trim": bool(self.auto_trim.get()),
+            "trim_padding": int(self.trim_padding.get()),
+        }
+
+    def _on_close(self) -> None:
+        try:
+            save_settings(self._current_settings_snapshot())
+        except Exception:
+            logger.warning("종료 시 설정 저장 실패", exc_info=True)
+        self.root.destroy()
 
     def run(self):
         self.root.mainloop()
