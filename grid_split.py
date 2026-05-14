@@ -14,6 +14,8 @@ import sys
 
 from PIL import Image
 
+from imageAlpha import resolve_unique_path
+
 
 class GridSplitResult(TypedDict):
     files: list[Path]
@@ -112,7 +114,7 @@ def split_image_grid(
             y0 = r * c_h
             cell = img.crop((x0, y0, x0 + c_w, y0 + c_h))
             name = f"{stem}_r{r:0{pad}d}c{c:0{pad}d}.png"
-            target = out_path / name
+            target = resolve_unique_path(out_path / name)
             cell.save(target, "PNG")
             files.append(target)
 

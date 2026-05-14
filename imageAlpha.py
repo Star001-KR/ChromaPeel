@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 __version__ = "0.3.0"
 
@@ -28,6 +28,41 @@ APP_DEFAULT_DECONTAMINATE = True
 APP_DEFAULT_EDGE_EROSION = 1
 APP_DEFAULT_AUTO_TRIM = False
 APP_DEFAULT_TRIM_PADDING = 0
+
+
+class OutputNameExhaustedError(FileExistsError):
+    """target.png 와 target_01.png ~ target_99.png 까지 모두 점유돼 새 파일을 만들 수 없을 때.
+
+    CLI 는 메시지를 stderr 로 출력 후 non-zero exit, GUI 는 messagebox 로 사용자에게 안내.
+    """
+
+
+def resolve_unique_path(target_path: Union[str, Path]) -> Path:
+    """동일 파일명이 이미 존재하면 ``{stem}_01..{stem}_99{suffix}`` 로 자동 회피.
+
+    - 비어있는 경로면 그대로 반환 (`photo.png`).
+    - 이미 존재하면 `_01`, `_02`, ... `_99` 까지 빈 번호 부여 (`photo_01.png`).
+    - `_99` 까지 모두 점유돼 있으면 :class:`OutputNameExhaustedError` 를 raise — 호출자는
+      덮어쓰기 옵션이 없으므로 사용자에게 명확히 안내 후 종료/실패 처리해야 한다.
+      덮어쓰기 옵션을 일부러 두지 않은 이유는 의도된 덮어쓰기는 매우 드물고, 돌이킬 수
+      없는 손실보다 "_01 ~ _99 정리하라"는 번거로움이 안전하기 때문이다.
+
+    CLI / GUI / dialogs 의 모든 저장 지점이 이 함수를 거치도록 단일화한다.
+    """
+    target = Path(target_path)
+    if not target.exists():
+        return target
+    parent = target.parent
+    stem = target.stem
+    suffix = target.suffix
+    for i in range(1, 100):
+        candidate = parent / f"{stem}_{i:02d}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise OutputNameExhaustedError(
+        f"ERROR: {target.name} 및 {stem}_01{suffix} ~ {stem}_99{suffix} "
+        f"가 모두 존재합니다. 기존 파일을 정리한 후 다시 시도하세요."
+    )
 
 
 def detect_background_colors(
@@ -133,7 +168,7 @@ def remove_color(
     trim_padding: int = 0,
     trim_alpha_threshold: int = 0,
     target_colors: Optional[list[RGB]] = None,
-) -> None:
+) -> Path:
     """
     특정 색상(들)을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 + 자동 트림 지원.
 
@@ -221,7 +256,9 @@ def remove_color(
             left, top, right, bottom = bbox
             final = final[top:bottom, left:right]
 
-    Image.fromarray(final).save(output_path, "PNG")
+    final_out = resolve_unique_path(output_path)
+    Image.fromarray(final).save(final_out, "PNG")
+    return final_out
 
 def process_folder(
     input_dir: str,
@@ -288,12 +325,12 @@ def process_folder(
     def _process_one(file: Path) -> tuple[Path, Optional[Path], Optional[BaseException]]:
         out_file = output_path / file.name
         try:
-            remove_color(str(file), str(out_file), target_color, tolerance,
-                         feather, decontaminate, edge_erosion,
-                         auto_trim=auto_trim, trim_padding=trim_padding,
-                         trim_alpha_threshold=trim_alpha_threshold,
-                         target_colors=target_colors)
-            return file, out_file, None
+            saved = remove_color(str(file), str(out_file), target_color, tolerance,
+                                 feather, decontaminate, edge_erosion,
+                                 auto_trim=auto_trim, trim_padding=trim_padding,
+                                 trim_alpha_threshold=trim_alpha_threshold,
+                                 target_colors=target_colors)
+            return file, saved, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
             return file, None, e
@@ -382,21 +419,30 @@ def _run_cli() -> None:
         target_colors=target_colors,
     )
 
+    import sys as _sys
     if args.from_clipboard:
         in_path = stage_clipboard_image_or_exit("base")
         out_dir = Path("alpha")
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / in_path.name
-        remove_color(str(in_path), str(out_path), **common_kwargs)
-        print(f"완료: {out_path.name}")
+        try:
+            saved = remove_color(str(in_path), str(out_path), **common_kwargs)
+        except OutputNameExhaustedError as e:
+            print(str(e), file=_sys.stderr)
+            _sys.exit(1)
+        print(f"완료: {saved.name}")
         return
+
+    failed: list[str] = []
 
     def _cli_progress(i, total, in_path, out_path, error):
         name = Path(in_path).name
         if error is not None:
-            print(f"[{i}/{total}] 실패: {name} — {error}")
+            failed.append(name)
+            print(f"[{i}/{total}] 실패: {name} — {error}",
+                  file=_sys.stderr if isinstance(error, OutputNameExhaustedError) else _sys.stdout)
         else:
-            print(f"[{i}/{total}] 완료: {name}")
+            print(f"[{i}/{total}] 완료: {Path(out_path).name}")
 
     process_folder(
         input_dir="base",
@@ -404,6 +450,8 @@ def _run_cli() -> None:
         progress_callback=_cli_progress,
         **common_kwargs,
     )
+    if failed:
+        _sys.exit(1)
 
 
 if __name__ == "__main__":

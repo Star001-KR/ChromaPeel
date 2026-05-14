@@ -80,6 +80,20 @@ def test_output_filename_uses_stem_with_crop_suffix(tmp_path):
     assert out.name == "my-image.001_crop.png"
 
 
+def test_crop_auto_numbers_when_output_exists(tmp_path):
+    """기존 출력과 충돌하면 _01 자동 부여."""
+    src = tmp_path / "pic.png"
+    _save_solid(src, size=(40, 40))
+    out_dir = tmp_path / "alpha"
+    out_dir.mkdir()
+    (out_dir / "pic_crop.png").write_bytes(b"")
+
+    out = manual_crop.crop_image(str(src), 0, 0, 20, 20, out_dir=str(out_dir))
+
+    assert out.name == "pic_crop_01.png"
+    assert out.exists()
+
+
 def test_out_dir_is_created_if_missing(tmp_path):
     src = tmp_path / "pic.png"
     _save_solid(src, size=(50, 50))

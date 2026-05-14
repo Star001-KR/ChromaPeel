@@ -142,17 +142,17 @@ def test_edge_erosion_eats_into_opaque(tmp_path):
     _save(arr, in_p)
 
     # Without erosion, the center pixel survives.
-    imageAlpha.remove_color(str(in_p), str(out_p),
+    no_erosion_p = imageAlpha.remove_color(str(in_p), str(out_p),
                             target_color=(255, 37, 255), tolerance=10,
                             feather=0, decontaminate=False, edge_erosion=0)
-    no_erosion = np.array(Image.open(out_p))
+    no_erosion = np.array(Image.open(no_erosion_p))
     assert no_erosion[2, 2, 3] == 255
 
-    # With erosion=1, the center pixel is eaten.
-    imageAlpha.remove_color(str(in_p), str(out_p),
+    # With erosion=1, the center pixel is eaten. (자동 _01 회피 — 동일 경로 재사용 금지)
+    eroded_p = imageAlpha.remove_color(str(in_p), str(out_p),
                             target_color=(255, 37, 255), tolerance=10,
                             feather=0, decontaminate=False, edge_erosion=1)
-    eroded = np.array(Image.open(out_p))
+    eroded = np.array(Image.open(eroded_p))
     assert eroded[2, 2, 3] == 0
 
 
@@ -699,4 +699,112 @@ def test_cli_from_clipboard_handles_pil_exception(tmp_path, monkeypatch, capsys)
     assert ei.value.code == 1
     err = capsys.readouterr().err
     assert "클립보드 읽기 실패" in err
+
+
+# ---------- resolve_unique_path (자동 번호 부여 정책) ----------
+
+def test_resolve_unique_path_returns_target_when_absent(tmp_path):
+    """파일 없음 → 그대로 반환."""
+    target = tmp_path / "photo.png"
+    assert imageAlpha.resolve_unique_path(target) == target
+
+
+def test_resolve_unique_path_first_collision_returns_01(tmp_path):
+    """1 개 충돌 → _01 반환."""
+    target = tmp_path / "photo.png"
+    target.write_bytes(b"")
+    assert imageAlpha.resolve_unique_path(target) == tmp_path / "photo_01.png"
+
+
+def test_resolve_unique_path_skips_to_next_free_slot(tmp_path):
+    """기존 _01..._50 점유 → _51 반환."""
+    (tmp_path / "photo.png").write_bytes(b"")
+    for i in range(1, 51):
+        (tmp_path / f"photo_{i:02d}.png").write_bytes(b"")
+    assert imageAlpha.resolve_unique_path(tmp_path / "photo.png") == \
+        tmp_path / "photo_51.png"
+
+
+def test_resolve_unique_path_raises_when_all_slots_taken(tmp_path):
+    """_01..._99 까지 모두 존재 시 OutputNameExhaustedError raise.
+
+    덮어쓰기 옵션은 없다 — 사용자 정책 결정 (정리 후 재시도 안내).
+    """
+    (tmp_path / "photo.png").write_bytes(b"")
+    for i in range(1, 100):
+        (tmp_path / f"photo_{i:02d}.png").write_bytes(b"")
+    with pytest.raises(imageAlpha.OutputNameExhaustedError) as ei:
+        imageAlpha.resolve_unique_path(tmp_path / "photo.png")
+    msg = str(ei.value)
+    assert "photo.png" in msg
+    assert "photo_01.png" in msg
+    assert "photo_99.png" in msg
+
+
+def test_resolve_unique_path_preserves_multi_dot_extension(tmp_path):
+    """photo.tar.gz 형태도 stem(photo.tar) + suffix(.gz) 기준으로 안전 동작."""
+    target = tmp_path / "photo.tar.gz"
+    target.write_bytes(b"")
+    assert imageAlpha.resolve_unique_path(target) == tmp_path / "photo.tar_01.gz"
+
+
+def test_remove_color_renames_when_target_exists(tmp_path):
+    """remove_color 가 출력 충돌 시 _01 자동 부여하고 실제 저장 경로를 반환."""
+    src = tmp_path / "in.png"
+    _save(_solid((255, 37, 255), (4, 4)), src)
+    out = tmp_path / "out.png"
+    out.write_bytes(b"")  # 점유
+
+    saved = imageAlpha.remove_color(str(src), str(out), target_color=(255, 37, 255))
+
+    assert saved == tmp_path / "out_01.png"
+    assert saved.exists()
+
+
+def test_process_folder_auto_numbers_collisions(tmp_path):
+    """폴더 처리에서 기존 출력 파일과 충돌하면 파일별로 _01 부여 + 콜백에 실제 경로 전달."""
+    src_dir = tmp_path / "in"
+    out_dir = tmp_path / "out"
+    src_dir.mkdir()
+    out_dir.mkdir()
+    _save(_solid((255, 37, 255), (4, 4)), src_dir / "a.png")
+    _save(_solid((255, 37, 255), (4, 4)), src_dir / "b.png")
+    # a.png 만 미리 점유 → a 만 _01, b 는 원본 이름
+    (out_dir / "a.png").write_bytes(b"")
+
+    seen: list[str] = []
+
+    def cb(i, total, in_path, out_path, error):
+        assert error is None
+        seen.append(Path(out_path).name)
+
+    imageAlpha.process_folder(
+        str(src_dir), str(out_dir),
+        target_color=(255, 37, 255),
+        progress_callback=cb, max_workers=1,
+    )
+
+    assert sorted(seen) == ["a_01.png", "b.png"]
+    assert (out_dir / "a_01.png").exists()
+    assert (out_dir / "b.png").exists()
+
+
+def test_cli_emits_stderr_and_nonzero_exit_when_slots_exhausted(tmp_path, monkeypatch, capsys):
+    """폴더 처리에서 _99 까지 다 차 있으면 stderr 에 안내 + non-zero exit."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "base").mkdir()
+    (tmp_path / "alpha").mkdir()
+    _save(_solid((255, 37, 255), (4, 4)), tmp_path / "base" / "photo.png")
+    # alpha/photo.png 와 _01.._99 모두 점유
+    (tmp_path / "alpha" / "photo.png").write_bytes(b"")
+    for i in range(1, 100):
+        (tmp_path / "alpha" / f"photo_{i:02d}.png").write_bytes(b"")
+
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli"])
+    with pytest.raises(SystemExit) as ei:
+        imageAlpha._run_cli()
+    assert ei.value.code == 1
+    err = capsys.readouterr().err
+    assert "photo.png" in err
+    assert "photo_99.png" in err
     assert "Traceback" not in err

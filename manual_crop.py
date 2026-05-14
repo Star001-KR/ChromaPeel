@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from PIL import Image
+
+from imageAlpha import OutputNameExhaustedError, resolve_unique_path
 
 
 def crop_image(
@@ -45,7 +48,7 @@ def crop_image(
     out_path.mkdir(parents=True, exist_ok=True)
 
     stem = Path(input_path).stem
-    out_file = out_path / f"{stem}_crop.png"
+    out_file = resolve_unique_path(out_path / f"{stem}_crop.png")
     cropped.save(out_file, "PNG")
     return out_file
 
@@ -99,7 +102,11 @@ def _run_cli() -> None:
         args.input = str(stage_clipboard_image_or_exit("base"))
 
     x, y, w, h = args.crop
-    out_file = crop_image(args.input, x, y, w, h, out_dir=args.out_dir)
+    try:
+        out_file = crop_image(args.input, x, y, w, h, out_dir=args.out_dir)
+    except OutputNameExhaustedError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
     print(f"완료: {out_file}")
 
 

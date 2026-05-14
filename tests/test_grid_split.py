@@ -329,6 +329,24 @@ def test_cli_rejects_both_input_and_clipboard(tmp_path):
     assert ei.value.code == 2
 
 
+def test_split_auto_numbers_when_cells_collide(tmp_path):
+    """기존 셀 파일과 충돌 시 _01 자동 부여 (resolve_unique_path 공통 정책)."""
+    in_p = _make_input(tmp_path, 100, 100)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    # r0c0 만 미리 점유 → 그 셀만 _01 로 회피
+    (out_dir / "image_r0c0.png").write_bytes(b"")
+
+    result = grid_split.split_image_grid(
+        str(in_p), str(out_dir), rows=2, cols=2,
+    )
+    saved = {f.name for f in result["files"]}
+    assert "image_r0c0_01.png" in saved
+    assert "image_r0c1.png" in saved
+    assert "image_r1c0.png" in saved
+    assert "image_r1c1.png" in saved
+
+
 def test_cli_clipboard_pil_exception_exits_cleanly(tmp_path, monkeypatch, capsys):
     """ImageGrab.grabclipboard() 가 예외를 던지는 환경 (Linux wl-paste 미설치 등) 회귀.
 
