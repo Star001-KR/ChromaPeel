@@ -21,6 +21,7 @@ import { initGrid } from './grid.js';
 import { initCrop } from './crop.js';
 import { initClipboard } from './clipboard.js';
 import { initMode } from './mode.js';
+import { initHistory } from './history.js';
 
 function init() {
   initChroma();
@@ -28,6 +29,7 @@ function init() {
   initCrop();
   initClipboard();
   initMode();
+  initHistory();
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -10,6 +10,7 @@ import {
   clearGridResults,
   updateGridControlsAvailability,
 } from './grid.js';
+import { addHistoryItem } from './history.js';
 
 // ---------- UI helpers ----------
 
@@ -237,6 +238,10 @@ async function saveOrShare() {
   if (!state.processedBlob) return;
   const filename = outputFilename();
   const file = new File([state.processedBlob], filename, { type: 'image/png' });
+
+  // Persist to history regardless of share/download success — "변환 완료"
+  // 시점이므로 한 번만 저장. share dialog 가 cancel 돼도 카드는 남는다.
+  addHistoryItem({ filename, blob: state.processedBlob }).catch(() => {});
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {

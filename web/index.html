@@ -119,6 +119,20 @@
       </div>
     </section>
 
+    <section class="history chroma-only" aria-label="작업 결과 히스토리">
+      <div class="history-header">
+        <span class="history-title">결과 히스토리</span>
+        <span class="history-note muted">
+          결과는 최대 10개까지 저장되며, 그 이후 작업 시 가장 오래된 결과부터 자동 삭제됩니다.
+        </span>
+      </div>
+      <div id="historyList" class="history-list"></div>
+      <p id="historyEmpty" class="history-empty muted">아직 저장된 결과가 없습니다.</p>
+      <div class="history-footer">
+        <span id="historySummary" class="muted">사용 중: 0 B / 0개</span>
+      </div>
+    </section>
+
     <!-- ==================== 격자 분할 모드 ==================== -->
     <section class="grid-controls grid-only" aria-label="격자 분할 설정">
       <div class="row">
