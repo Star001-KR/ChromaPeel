@@ -13,6 +13,8 @@ from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
+from imageAlpha import EXHAUSTED_USER_MESSAGE, OutputNameExhaustedError
+
 from .. import ALPHA_DIR
 from ._clipboard import ClipboardPasteMixin
 
@@ -421,6 +423,15 @@ class ManualCropDialog(ClipboardPasteMixin, tk.Toplevel):
             out_path = crop_image(
                 str(self.image_path), ix1, iy1, w, h, out_dir=str(ALPHA_DIR),
             )
+        except OutputNameExhaustedError:
+            # _99 까지 모두 점유 — 사용자 친화적 양식으로 안내, 다이얼로그 유지.
+            crop_target = f"{self.image_path.stem}_crop.png"
+            messagebox.showwarning(
+                "크롭 저장 불가",
+                EXHAUSTED_USER_MESSAGE.format(filename=crop_target),
+                parent=self,
+            )
+            return
         except Exception as e:
             messagebox.showerror("크롭 실패", str(e), parent=self)
             return

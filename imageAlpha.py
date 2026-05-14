@@ -37,6 +37,14 @@ class OutputNameExhaustedError(FileExistsError):
     """
 
 
+# GUI / dialogs 에서 사용자에게 노출할 통일된 한계 도달 메시지 양식.
+# {filename} 은 한계에 걸린 파일 이름 (basename) 으로 채워진다.
+EXHAUSTED_USER_MESSAGE = (
+    "{filename} 및 _01 ~ _99 suffix 까지 모든 파일이 이미 존재합니다.\n"
+    "기존 결과 파일을 정리한 후 다시 시도해주세요."
+)
+
+
 def resolve_unique_path(target_path: Union[str, Path]) -> Path:
     """동일 파일명이 이미 존재하면 ``{stem}_01..{stem}_99{suffix}`` 로 자동 회피.
 
@@ -63,6 +71,26 @@ def resolve_unique_path(target_path: Union[str, Path]) -> Path:
         f"ERROR: {target.name} 및 {stem}_01{suffix} ~ {stem}_99{suffix} "
         f"가 모두 존재합니다. 기존 파일을 정리한 후 다시 시도하세요."
     )
+
+
+def is_output_name_exhausted(target_path: Union[str, Path]) -> bool:
+    """``target`` 과 그 ``_01..._99`` suffix 까지 모두 점유돼 새 파일을 만들 수 없으면 True.
+
+    GUI 의 변환 시작 전 사전 체크용 — :func:`resolve_unique_path` 를 호출하지 않고
+    한계 여부만 빠르게 판정한다. 호출 결과는 시점 스냅샷이므로, 멀티 프로세스 환경에서는
+    실제 저장 시점에 다시 :class:`OutputNameExhaustedError` 가 raise 될 수 있다.
+    """
+    target = Path(target_path)
+    if not target.exists():
+        return False
+    parent = target.parent
+    stem = target.stem
+    suffix = target.suffix
+    for i in range(1, 100):
+        candidate = parent / f"{stem}_{i:02d}{suffix}"
+        if not candidate.exists():
+            return False
+    return True
 
 
 def detect_background_colors(

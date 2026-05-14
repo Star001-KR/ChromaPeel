@@ -748,6 +748,48 @@ def test_resolve_unique_path_preserves_multi_dot_extension(tmp_path):
     assert imageAlpha.resolve_unique_path(target) == tmp_path / "photo.tar_01.gz"
 
 
+# ---------- is_output_name_exhausted (GUI 사전 체크용) ----------
+
+def test_is_output_name_exhausted_false_when_target_absent(tmp_path):
+    """파일이 아예 없으면 한계가 아님."""
+    assert imageAlpha.is_output_name_exhausted(tmp_path / "photo.png") is False
+
+
+def test_is_output_name_exhausted_false_with_partial_occupancy(tmp_path):
+    """_01..._50 만 점유 → 51 슬롯 있음 → 한계 아님."""
+    (tmp_path / "photo.png").write_bytes(b"")
+    for i in range(1, 51):
+        (tmp_path / f"photo_{i:02d}.png").write_bytes(b"")
+    assert imageAlpha.is_output_name_exhausted(tmp_path / "photo.png") is False
+
+
+def test_is_output_name_exhausted_true_when_all_slots_taken(tmp_path):
+    """_99 까지 모두 점유 → 한계."""
+    (tmp_path / "photo.png").write_bytes(b"")
+    for i in range(1, 100):
+        (tmp_path / f"photo_{i:02d}.png").write_bytes(b"")
+    assert imageAlpha.is_output_name_exhausted(tmp_path / "photo.png") is True
+
+
+def test_is_output_name_exhausted_consistent_with_resolve_raise(tmp_path):
+    """is_output_name_exhausted=True 인 경로는 resolve_unique_path 가 raise 해야 한다."""
+    (tmp_path / "photo.png").write_bytes(b"")
+    for i in range(1, 100):
+        (tmp_path / f"photo_{i:02d}.png").write_bytes(b"")
+    target = tmp_path / "photo.png"
+    assert imageAlpha.is_output_name_exhausted(target) is True
+    with pytest.raises(imageAlpha.OutputNameExhaustedError):
+        imageAlpha.resolve_unique_path(target)
+
+
+def test_exhausted_user_message_format():
+    """GUI / dialogs 가 동일한 양식을 공유하는지 — 양식 변경 시 동시에 갱신되도록."""
+    msg = imageAlpha.EXHAUSTED_USER_MESSAGE.format(filename="example.png")
+    assert "example.png" in msg
+    assert "_01 ~ _99" in msg
+    assert "기존 결과 파일을 정리" in msg
+
+
 def test_remove_color_renames_when_target_exists(tmp_path):
     """remove_color 가 출력 충돌 시 _01 자동 부여하고 실제 저장 경로를 반환."""
     src = tmp_path / "in.png"

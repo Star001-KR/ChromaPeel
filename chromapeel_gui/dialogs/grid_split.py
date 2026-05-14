@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 
 from grid_split import split_image_grid
+from imageAlpha import EXHAUSTED_USER_MESSAGE, OutputNameExhaustedError
 
 from .. import ALPHA_DIR, _open_path
 from ._clipboard import ClipboardPasteMixin
@@ -356,6 +357,21 @@ class GridSplitDialog(ClipboardPasteMixin, tk.Toplevel):
             self.btn_split.configure(state="normal")
             self.btn_cancel.configure(state="normal")
             self.status_label.configure(text="")
+            if isinstance(error, OutputNameExhaustedError):
+                # 셀 파일 중 하나라도 _99 한계에 걸리면 split_image_grid 가 raise.
+                # split 은 셀별 파일이므로 단일 filename 양식 그대로 적용해도 어색하지
+                # 않다 — error.args[0] 에 이미 첫 한계 파일 정보가 들어있다.
+                target = (
+                    f"{self.image_path.stem}_split/ 내 셀 파일"
+                    if self.image_path is not None
+                    else "셀 파일"
+                )
+                messagebox.showwarning(
+                    "분할 저장 불가",
+                    EXHAUSTED_USER_MESSAGE.format(filename=target),
+                    parent=self,
+                )
+                return
             messagebox.showerror("분할 실패", str(error), parent=self)
             return
         try:

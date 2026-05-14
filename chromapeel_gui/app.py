@@ -18,6 +18,9 @@ from imageAlpha import (
     APP_DEFAULT_TARGET_COLOR,
     APP_DEFAULT_TOLERANCE,
     APP_DEFAULT_TRIM_PADDING,
+    EXHAUSTED_USER_MESSAGE,
+    OutputNameExhaustedError,
+    is_output_name_exhausted,
     __version__,
 )
 from clipboard_utils import (
@@ -568,6 +571,18 @@ class ChromaPeelApp:
             self._set_status("변환할 파일이 없습니다. PNG를 드래그하세요.")
             return
 
+        # 사전 체크: 출력 슬롯이 _99 까지 모두 점유돼 시작도 못 하는 파일을 식별.
+        # 모두 한계면 변환 자체를 시작하지 않는다 — 사용자 안내 후 종료.
+        # 일부만 한계면 그대로 진행하고 (process_folder 가 그 파일에서
+        # OutputNameExhaustedError 를 raise → 콜백에서 skip 으로 카운트), 끝난 후 요약.
+        exhausted = [
+            f for f in inputs if is_output_name_exhausted(ALPHA_DIR / f.name)
+        ]
+        if exhausted and len(exhausted) == len(inputs):
+            self._show_all_exhausted_warning(exhausted)
+            self._set_status("변환 미시작 — 출력 슬롯이 모두 점유됐습니다.")
+            return
+
         self.processing = True
         self.btn_convert.configure(state="disabled", text=" 변환 중... ")
         self.btn_clear.configure(state="disabled")
@@ -589,9 +604,24 @@ class ChromaPeelApp:
 
         threading.Thread(target=self._run_process, args=(params,), daemon=True).start()
 
+    def _show_all_exhausted_warning(self, exhausted: list[Path]) -> None:
+        """입력 전체가 _99 한계에 걸렸을 때의 단일 modal 경고."""
+        if len(exhausted) == 1:
+            msg = EXHAUSTED_USER_MESSAGE.format(filename=exhausted[0].name)
+        else:
+            file_list = "\n".join(f"  • {p.name}" for p in exhausted)
+            msg = (
+                f"다음 {len(exhausted)}개 입력 파일의 출력 슬롯이 모두 점유됐습니다 "
+                f"— 각 파일과 _01 ~ _99 suffix 까지 이미 존재합니다.\n\n"
+                f"{file_list}\n\n"
+                f"기존 결과 파일을 정리한 후 다시 시도해주세요."
+            )
+        messagebox.showwarning("변환 시작 불가", msg, parent=self.root)
+
     def _run_process(self, params):
         first_done = [False]
         failed = [0]
+        skipped_exhausted: list[str] = []
 
         def cb(i, total, in_path, out_path, error):
             def ui_update():
@@ -599,10 +629,17 @@ class ChromaPeelApp:
                     self.output_view.clear()
                     first_done[0] = True
                 if error is not None:
-                    failed[0] += 1
-                    self._set_status(
-                        f"{i}/{total} 실패 — {Path(in_path).name}: {error}"
-                    )
+                    if isinstance(error, OutputNameExhaustedError):
+                        skipped_exhausted.append(Path(in_path).name)
+                        self._set_status(
+                            f"{i}/{total} skip — {Path(in_path).name}: "
+                            f"출력 슬롯 한계 도달"
+                        )
+                    else:
+                        failed[0] += 1
+                        self._set_status(
+                            f"{i}/{total} 실패 — {Path(in_path).name}: {error}"
+                        )
                 else:
                     self.output_view.add_thumbnail(Path(out_path))
                     self._set_status(f"{i}/{total} 완료 — {Path(in_path).name}")
@@ -616,29 +653,58 @@ class ChromaPeelApp:
                 progress_callback=cb,
                 **params,
             )
-            self.root.after(0, lambda: self._on_done(None, failed[0]))
+            self.root.after(
+                0,
+                lambda: self._on_done(None, failed[0], list(skipped_exhausted)),
+            )
         except Exception as e:
             err = e
-            self.root.after(0, lambda: self._on_done(err, failed[0]))
+            self.root.after(
+                0,
+                lambda: self._on_done(err, failed[0], list(skipped_exhausted)),
+            )
 
-    def _on_done(self, error: Exception | None, failed: int = 0):
+    def _on_done(
+        self,
+        error: Exception | None,
+        failed: int = 0,
+        skipped_exhausted: list[str] | None = None,
+    ):
         self.processing = False
         self.btn_convert.configure(state="normal", text="   변환   ")
         self.btn_clear.configure(state="normal")
         self.btn_paste.configure(state="normal")
+        skipped_exhausted = skipped_exhausted or []
         if error is not None:
             self.progress.configure(value=0)
             self._set_status(f"오류: {error}")
             messagebox.showerror("변환 실패", str(error))
             self._refresh_outputs_from_disk()
-        else:
-            self.progress.configure(value=self.progress["maximum"])
-            if failed:
-                self._set_status(
-                    f"변환 완료 — {failed}개 파일 실패. 결과 썸네일을 탐색기로 드래그하세요"
-                )
-            else:
-                self._set_status("변환 완료 — 결과 썸네일을 탐색기로 드래그하세요")
+            return
+
+        self.progress.configure(value=self.progress["maximum"])
+        success = int(self.progress["maximum"]) - failed - len(skipped_exhausted)
+        parts = [f"성공 {success}건"]
+        if skipped_exhausted:
+            parts.append(f"skip {len(skipped_exhausted)}건")
+        if failed:
+            parts.append(f"실패 {failed}건")
+        self._set_status(
+            "변환 완료 — " + ", ".join(parts) + " · 결과 썸네일을 탐색기로 드래그하세요"
+        )
+
+        if skipped_exhausted:
+            skip_list = "\n".join(f"  • {name}" for name in skipped_exhausted)
+            messagebox.showinfo(
+                "변환 완료 — 일부 skip",
+                f"성공 {success}건, skip {len(skipped_exhausted)}건"
+                + (f", 실패 {failed}건" if failed else "")
+                + "\n\n"
+                f"다음 {len(skipped_exhausted)}개 파일은 출력 슬롯 한계 "
+                f"(_01 ~ _99 모두 점유)로 skip 했습니다:\n{skip_list}\n\n"
+                "해당 파일을 변환하려면 기존 결과를 정리한 후 다시 시도해주세요.",
+                parent=self.root,
+            )
 
     def _set_status(self, text: str):
         self.status.set(text)
