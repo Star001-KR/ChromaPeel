@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `3.8 / 3.10 / 3.12` to `3.10 / 3.12 / 3.13`.
 
 ### Fixed
+- `detect_background_colors()` 의 테두리 픽셀 수집에서 코너 4 개가 두 번 집계되던
+  버그 수정 (Python + Web JS 동기 fix). 작은 이미지에서 자동 감지 비율 계산이 약간
+  부정확했던 케이스가 사라진다. Python·JS parity 는 유지.
+- 웹의 "자동 감지" 토글이 사용자가 수동으로 고른 색 목록을 영구 손실시키던 동작
+  수정 — ON 직전 목록을 보관해 OFF 토글 시 자동 복원한다.
 - `run.sh` now mirrors `run.bat`'s import precheck — `chromapeel_gui` import
   failures (missing dependency, broken package) surface to the user with the
   full traceback and a recovery hint instead of silently exiting. Closes a

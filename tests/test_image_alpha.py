@@ -489,6 +489,34 @@ def test_process_folder_propagates_auto_trim(tmp_path):
     assert out.shape == (2, 2, 4)  # cropped to the 2x2 opaque region
 
 
+def test_process_folder_propagates_target_colors(tmp_path):
+    """배치 API 가 target_colors 를 remove_color 까지 전달하는지 회귀 방지.
+
+    두 배경색이 있는 이미지에서 두 색 모두 투명화, 전경은 보존되어야 한다.
+    이전에 target_color (단일) 만 검증해 다색 경로가 무방비 상태였다.
+    """
+    in_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    in_dir.mkdir()
+    arr = np.zeros((6, 6, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:3, :, :3] = [10, 20, 30]          # 상단: 색 A
+    arr[3:, :, :3] = [200, 100, 50]        # 하단: 색 B
+    arr[2:4, 2:4, :3] = [80, 80, 80]       # 중앙: 전경 C
+    _save(arr, in_dir / "a.png")
+
+    imageAlpha.process_folder(
+        str(in_dir), str(out_dir),
+        target_colors=[(10, 20, 30), (200, 100, 50)],
+        tolerance=5, feather=0, decontaminate=False, edge_erosion=0,
+        max_workers=1,
+    )
+    out = np.array(Image.open(out_dir / "a.png"))
+    assert out[0, 0, 3] == 0           # 색 A 영역 투명
+    assert out[5, 5, 3] == 0           # 색 B 영역 투명
+    assert out[2, 2, 3] == 255         # 전경 보존
+    assert tuple(out[2, 2, :3]) == (80, 80, 80)
+
+
 def test_process_folder_propagates_trim_alpha_threshold(tmp_path):
     """배치 API 가 trim_alpha_threshold 를 remove_color 까지 전달하는지 회귀 방지.
 

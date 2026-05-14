@@ -14,11 +14,13 @@ export function detectBackgroundColors(imageData, minRatio = 0.05, maxK = 8) {
     const key = (data[idx] << 16) | (data[idx + 1] << 8) | data[idx + 2];
     counts.set(key, (counts.get(key) || 0) + 1);
   };
+  // 첫/끝 행은 전체, 첫/끝 열은 코너 제외 — Python 의 concat 슬라이스와 동일하게
+  // 코너 4 픽셀이 한 번씩만 집계되도록 한다.
   for (let x = 0; x < width; x++) {
     tally((0 * width + x) * 4);
     tally(((height - 1) * width + x) * 4);
   }
-  for (let y = 0; y < height; y++) {
+  for (let y = 1; y < height - 1; y++) {
     tally((y * width + 0) * 4);
     tally((y * width + (width - 1)) * 4);
   }

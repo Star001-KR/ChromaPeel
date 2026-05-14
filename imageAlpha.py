@@ -48,11 +48,12 @@ def detect_background_colors(
     :param max_k: 반환할 최대 색상 수 (>= 1)
     """
     rgb = data[..., :3].astype(np.uint8)
+    # 첫/끝 행은 전체, 첫/끝 열은 코너 제외 — 그렇지 않으면 코너 4 픽셀이 2 번 집계된다.
     border = np.concatenate([
         rgb[0, :, :],
         rgb[-1, :, :],
-        rgb[:, 0, :],
-        rgb[:, -1, :],
+        rgb[1:-1, 0, :],
+        rgb[1:-1, -1, :],
     ])
     colors, counts = np.unique(border, axis=0, return_counts=True)
     total = int(counts.sum())

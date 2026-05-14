@@ -64,12 +64,25 @@ function renderColorRows() {
   });
 }
 
+// 자동 감지 ON 직전의 수동 선택 색상. OFF 토글 시 복원해 사용자가
+// 직접 고른 색이 자동 감지 결과로 영구 손실되지 않도록 한다.
+let savedManualColors = null;
+
 function syncAutoDetectUI() {
   const auto = state.autoDetect;
   $('colorsContainer').classList.toggle('disabled', auto);
   $('addColorBtn').disabled = auto;
-  if (auto && state.sourceImageData) {
-    state.targetColors = detectBackgroundColors(state.sourceImageData);
+  if (auto) {
+    if (savedManualColors === null) {
+      savedManualColors = state.targetColors.map((c) => [...c]);
+    }
+    if (state.sourceImageData) {
+      state.targetColors = detectBackgroundColors(state.sourceImageData);
+      renderColorRows();
+    }
+  } else if (savedManualColors !== null) {
+    state.targetColors = savedManualColors;
+    savedManualColors = null;
     renderColorRows();
   }
 }
@@ -320,6 +333,7 @@ export function initChroma() {
     state.targetColors = [[255, 37, 255]];
     state.autoTrim = false;
     state.trimPadding = 0;
+    savedManualColors = null;
     $('tolerance').value = 20; $('toleranceVal').textContent = '20';
     $('feather').value = 100; $('featherVal').textContent = '100';
     $('edgeErosion').value = 1; $('edgeErosionVal').textContent = '1';
