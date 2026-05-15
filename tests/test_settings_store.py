@@ -34,6 +34,18 @@ def test_load_non_dict_top_level_returns_default(tmp_path):
     assert load_settings(path) == default_settings()
 
 
+def test_load_non_utf8_returns_default(tmp_path):
+    """비UTF-8 바이트로 손상된 파일은 UnicodeDecodeError 를 삼키고 default 로 fallback.
+
+    save_settings 의 쓰기가 멀티바이트 시퀀스 중간에서 잘리면 이런 파일이 생길 수
+    있다. load_settings 는 GUI __init__(app.py)에서 호출되므로 여기서 raise 되면
+    앱 부팅 자체가 막힌다.
+    """
+    path = tmp_path / "settings.json"
+    path.write_bytes(b"\xff\xfe garbage \x80\x81 not utf-8")
+    assert load_settings(path) == default_settings()
+
+
 def test_save_creates_parent_directory(tmp_path):
     path = tmp_path / "nested" / "deep" / "settings.json"
     save_settings(default_settings(), path)
@@ -163,19 +175,21 @@ def test_missing_keys_use_defaults(tmp_path):
 
 
 def test_save_silently_ignores_oserror(tmp_path, monkeypatch):
-    """디렉토리 생성 실패 / write 실패는 사용자에게 노출되지 않아야 함."""
-    path = tmp_path / "sub" / "settings.json"
+    """원자 교체(os.replace) 실패는 노출되지 않고, 임시 파일도 누수 없이 정리된다."""
+    path = tmp_path / "settings.json"
 
     from chromapeel_gui import settings_store
 
-    def boom(self, *args, **kwargs):
-        raise PermissionError("no write")
+    def boom(*args, **kwargs):
+        raise PermissionError("no replace")
 
-    monkeypatch.setattr(
-        settings_store.Path, "write_text", boom, raising=True
-    )
+    monkeypatch.setattr(settings_store.os, "replace", boom, raising=True)
     # raise 없이 통과해야 한다
     save_settings(default_settings(), path)
+    # 원자성 — 교체 실패 시 대상 파일은 생성/손상되지 않는다
+    assert not path.exists()
+    # 임시 파일 누수 없음
+    assert list(tmp_path.glob(".settings-*.tmp")) == []
 
 
 def test_normalize_idempotent():

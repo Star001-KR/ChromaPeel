@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -124,7 +126,9 @@ def load_settings(path: Path = SETTINGS_PATH) -> dict[str, Any]:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return default_settings()
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
+        # UnicodeDecodeError(ValueError 계열)는 except OSError 로 안 잡힌다 — 비UTF-8 로
+        # 손상된 파일에서 raise 되면 GUI __init__ 의 load_settings 가 부팅을 막는다.
         logger.warning("설정 파일 읽기 실패: %s — default 사용", e)
         return default_settings()
 
@@ -140,16 +144,32 @@ def load_settings(path: Path = SETTINGS_PATH) -> dict[str, Any]:
 def save_settings(data: dict[str, Any], path: Path = SETTINGS_PATH) -> None:
     """settings dict 를 JSON 으로 저장. 실패는 로그만 (사용자에게 노출 X).
 
+    임시 파일에 먼저 쓴 뒤 os.replace 로 교체한다 — 쓰기 도중 프로세스가 강제
+    종료돼도 기존 settings.json 이 부분 쓰기로 손상되지 않는다 (불완전한 멀티바이트
+    시퀀스로 끝나는 비UTF-8 파일이 다음 부팅의 load_settings 를 깨뜨리는 것 방지).
+
     target_colors 가 tuple 이어도 list 로 직렬화된다 (json.dumps 가 자동).
     """
     serializable = normalize(data)
     serializable["target_colors"] = [list(rgb) for rgb in serializable["target_colors"]]
+    payload = json.dumps(serializable, indent=2, ensure_ascii=False)
 
+    tmp_path: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(serializable, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        # 임시 파일은 대상과 같은 디렉토리에 — os.replace 가 동일 파일시스템에서만
+        # 원자적이기 때문.
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent,
+            prefix=".settings-", suffix=".tmp", delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(payload)
+        os.replace(tmp_path, path)
     except OSError as e:
         logger.warning("설정 파일 저장 실패: %s — 무시", e)
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
