@@ -222,10 +222,6 @@ function runProcess() {
 
 // ---------- Save / Share ----------
 
-// 직전에 히스토리에 기록한 변환 결과 Blob. saveOrShare 가 같은 결과를 반복
-// 저장/공유할 때 카드가 중복 적재되지 않도록 비교 기준으로 쓴다.
-let lastSavedBlob = null;
-
 function outputFilename() {
   const raw = ($('filenameInput').value || '').trim();
   if (raw) {
@@ -243,13 +239,10 @@ async function saveOrShare() {
   const filename = outputFilename();
   const file = new File([state.processedBlob], filename, { type: 'image/png' });
 
-  // 같은 변환 결과(동일 Blob)는 반복 저장/공유해도 히스토리에 한 번만 기록한다.
-  // runProcess 가 변환 때마다 새 Blob 을 만들므로 재처리된 결과는 다시 기록되고,
-  // share dialog 를 취소해도 이미 기록된 카드는 그대로 남는다.
-  if (state.processedBlob !== lastSavedBlob) {
-    lastSavedBlob = state.processedBlob;
-    addHistoryItem({ filename, blob: state.processedBlob }).catch(() => {});
-  }
+  // 히스토리에 적재 — 같은 변환 결과를 반복 저장/공유해도 카드는 한 번만 쌓이고
+  // (dedup 은 addHistoryItem 이 담당), share dialog 를 취소해도 카드는 그대로
+  // 남는다. runProcess 가 변환마다 새 Blob 을 만들므로 재처리 결과는 새 카드가 된다.
+  addHistoryItem({ filename, blob: state.processedBlob }).catch(() => {});
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
