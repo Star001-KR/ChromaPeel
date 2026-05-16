@@ -729,7 +729,12 @@ def test_cli_auto_detects_background(tmp_path, monkeypatch):
 
 
 def test_cli_auto_detects_multiple_border_colors(tmp_path, monkeypatch):
-    """--auto 가 테두리의 여러 색을 모두 감지해 제거 — --auto→auto_detect 연동 회귀 방지."""
+    """--auto 가 테두리의 여러 색을 모두 감지해 제거 — --auto→auto_detect 연동 회귀 방지.
+
+    전경은 CLI 기본 edge_erosion=1 에서 살아남도록 6×6 으로 둔다. 2×2 면 전경이
+    통째로 침식돼 출력이 전부 투명해지므로, 배경 두 색 제거뿐 아니라 다색 감지가
+    전경까지 깎지 않았는지(전경 보존)도 검증할 수 있게 한다.
+    """
     monkeypatch.chdir(tmp_path)
     base = tmp_path / "base"
     base.mkdir()
@@ -737,13 +742,14 @@ def test_cli_auto_detects_multiple_border_colors(tmp_path, monkeypatch):
     arr[..., 3] = 255
     arr[:5, :, :3] = [10, 20, 30]
     arr[5:, :, :3] = [200, 100, 50]
-    arr[4:6, 4:6, :3] = [0, 255, 0]
+    arr[2:8, 2:8, :3] = [0, 255, 0]
     _save(arr, base / "a.png")
     monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--auto"])
     imageAlpha._run_cli()
     out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
     assert out[0, 0, 3] == 0       # 테두리 색 A 투명
     assert out[9, 9, 3] == 0       # 테두리 색 B 도 투명 (다색 자동 감지)
+    assert out[5, 5, 3] == 255     # 전경은 보존 — 다색 감지가 전경까지 깎지 않음
 
 
 def test_cli_rejects_target_color_with_auto(tmp_path, monkeypatch, capsys):
