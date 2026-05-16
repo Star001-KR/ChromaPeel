@@ -596,6 +596,7 @@ class ChromaPeelApp:
         self._set_status(f"0/{len(inputs)} 변환 시작...")
 
         params = {
+            "auto_detect": bool(self.auto_detect_bg.get()),
             "target_colors": None if self.auto_detect_bg.get() else list(self.target_colors),
             "tolerance": int(self.tolerance.get()),
             "feather": int(self.feather.get()),

@@ -196,13 +196,14 @@ def remove_color(
     trim_padding: int = 0,
     trim_alpha_threshold: int = 0,
     target_colors: Optional[list[RGB]] = None,
+    auto_detect: bool = False,
 ) -> Path:
     """
     특정 색상(들)을 투명하게 처리합니다. feather + color decontamination + 엣지 침식 + 자동 트림 지원.
 
     :param input_path: 입력 이미지 경로
     :param output_path: 출력 이미지 경로 (PNG 권장)
-    :param target_color: 단일 제거 색상 (R, G, B). target_colors 와 동시 지정 불가. 둘 다 None 이면 테두리에서 자동 다색 감지.
+    :param target_color: 단일 제거 색상 (R, G, B). target_colors 와 동시 지정 불가. 둘 다 None 이면 테두리 최빈색 1개를 자동 감지 (auto_detect=True 면 다색 감지).
     :param tolerance: 완전 투명으로 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위. tolerance~(tolerance+feather) 구간은 선형 그라데이션으로 알파 적용
     :param decontaminate: True면 반투명 엣지 픽셀에서 (가장 가까운) 타겟 색상 성분을 빼서 핑크/컬러 프린지 제거
@@ -211,10 +212,17 @@ def remove_color(
     :param trim_padding: auto_trim bbox 사방에 추가할 여유 픽셀 수.
     :param trim_alpha_threshold: 이 값을 초과하는 알파만 bbox 계산에 포함 (기본 0 = 완전 투명만 자르기).
     :param target_colors: 다색 제거 — RGB 튜플 리스트. 각 픽셀은 가장 가까운 타겟 색상 기준으로 판정.
-        target_color 와 동시 지정 불가. 둘 다 None 이면 detect_background_colors 로 자동 다색 감지.
+        target_color 와 동시 지정 불가.
+    :param auto_detect: target_color/target_colors 가 모두 None 일 때의 자동 감지 모드.
+        False(기본) — 테두리 최빈색 1개만 감지 (0.2.0 단일색 동작과 역호환).
+        True — detect_background_colors 로 다색 자동 감지. target_color/target_colors 와 동시 지정 불가.
     """
     if target_color is not None and target_colors is not None:
         raise ValueError("target_color 와 target_colors 는 동시에 지정할 수 없습니다.")
+    if auto_detect and (target_color is not None or target_colors is not None):
+        raise ValueError(
+            "auto_detect 는 target_color / target_colors 와 동시에 지정할 수 없습니다."
+        )
 
     img = Image.open(input_path).convert("RGBA")
     data = np.array(img).astype(np.float32)
@@ -225,8 +233,10 @@ def remove_color(
         colors: list[RGB] = [(int(c[0]), int(c[1]), int(c[2])) for c in target_colors]
     elif target_color is not None:
         colors = [(int(target_color[0]), int(target_color[1]), int(target_color[2]))]
-    else:
+    elif auto_detect:
         colors = detect_background_colors(data)
+    else:
+        colors = [detect_background_color(data)]
 
     r, g, b, a = data[..., 0], data[..., 1], data[..., 2], data[..., 3]
 
@@ -302,13 +312,14 @@ def process_folder(
     progress_callback: Optional[ProgressCallback] = None,
     max_workers: Optional[int] = None,
     target_colors: Optional[list[RGB]] = None,
+    auto_detect: bool = False,
 ) -> None:
     """
     input_dir 내 모든 PNG 이미지에 알파 처리를 적용해 output_dir에 저장합니다.
 
     :param input_dir: 입력 폴더 경로
     :param output_dir: 출력 폴더 경로 (없으면 자동 생성)
-    :param target_color: 단일 제거 색상. target_colors 와 동시 지정 불가. 둘 다 None 이면 파일별 자동 다색 감지.
+    :param target_color: 단일 제거 색상. target_colors 와 동시 지정 불가. 둘 다 None 이면 파일별 최빈색 1개 자동 감지 (auto_detect=True 면 다색).
     :param tolerance: 완전 투명 처리할 색상 허용 오차 (0~255)
     :param feather: 반투명 페이드 범위
     :param decontaminate: 엣지 색상 프린지 제거 여부 (다색이면 픽셀별 nearest target 으로 적용)
@@ -326,8 +337,16 @@ def process_folder(
         1 — 순차 처리 (입력 순서대로 콜백 보장; 결정적 동작이 필요할 때).
         N — N개 스레드로 병렬 처리.
     :param target_colors: 다색 제거 — RGB 튜플 리스트. target_color 와 동시 지정 불가.
-        둘 다 None 이면 파일별로 detect_background_colors 자동 감지.
+    :param auto_detect: target_color/target_colors 가 모두 None 일 때 파일별 다색 자동 감지를
+        켠다. False(기본)면 파일별 최빈색 1개만 감지. remove_color 의 auto_detect 와 동일.
     """
+    if target_color is not None and target_colors is not None:
+        raise ValueError("target_color 와 target_colors 는 동시에 지정할 수 없습니다.")
+    if auto_detect and (target_color is not None or target_colors is not None):
+        raise ValueError(
+            "auto_detect 는 target_color / target_colors 와 동시에 지정할 수 없습니다."
+        )
+
     input_path = Path(input_dir)
     output_path = Path(output_dir)
 
@@ -357,7 +376,7 @@ def process_folder(
                                  feather, decontaminate, edge_erosion,
                                  auto_trim=auto_trim, trim_padding=trim_padding,
                                  trim_alpha_threshold=trim_alpha_threshold,
-                                 target_colors=target_colors)
+                                 target_colors=target_colors, auto_detect=auto_detect)
             return file, saved, None
         except Exception as e:
             logger.warning("처리 실패: %s — %s", file, e, exc_info=True)
@@ -445,6 +464,7 @@ def _run_cli() -> None:
         auto_trim=args.auto_trim,
         trim_padding=args.trim_padding,
         target_colors=target_colors,
+        auto_detect=bool(args.auto),
     )
 
     import sys as _sys

@@ -197,8 +197,8 @@ def test_remove_color_rejects_empty_target_colors(tmp_path):
         imageAlpha.remove_color(str(in_p), str(out_p), target_colors=[])
 
 
-def test_remove_color_auto_detects_multi_colors_when_both_none(tmp_path):
-    """둘 다 None → 자동 다색 감지 후 두 색 모두 투명화."""
+def test_remove_color_auto_detect_true_removes_multi_colors(tmp_path):
+    """auto_detect=True → 자동 다색 감지 후 두 배경색 모두 투명화."""
     arr = np.zeros((10, 10, 4), dtype=np.uint8)
     arr[..., 3] = 255
     arr[:5, :, :3] = [10, 20, 30]
@@ -208,12 +208,52 @@ def test_remove_color_auto_detects_multi_colors_when_both_none(tmp_path):
     _save(arr, in_p)
 
     imageAlpha.remove_color(str(in_p), str(out_p),
-                            target_color=None, target_colors=None,
+                            auto_detect=True,
                             tolerance=5, feather=0,
                             decontaminate=False, edge_erosion=0)
     out = np.array(Image.open(out_p))
     assert out[0, 0, 3] == 0
     assert out[9, 9, 3] == 0
+
+
+def test_remove_color_default_auto_detect_is_single_color(tmp_path):
+    """색 미지정 + auto_detect 미지정(기본) → 테두리 최빈색 1개만 감지.
+
+    ac1e297 의 다색 감지가 opt-in 없이 기본 동작을 바꾸지 않는다는 회귀 방지.
+    테두리가 다수 A + 소수 B 일 때, 색을 전혀 지정하지 않은 호출은 0.2.0 처럼
+    최빈 A 만 투명해지고 B 는 보존되어야 한다.
+    """
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[..., :3] = [10, 20, 30]            # 전체 A
+    arr[0, :, :3] = [200, 100, 50]         # 상단 행만 B — 테두리에서 A 가 다수 (26:10)
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+
+    imageAlpha.remove_color(str(in_p), str(out_p),
+                            tolerance=5, feather=0,
+                            decontaminate=False, edge_erosion=0)
+    out = np.array(Image.open(out_p))
+    assert out[5, 0, 3] == 0       # 최빈색 A 는 투명
+    assert out[0, 5, 3] == 255     # 소수색 B 는 보존 — 단일 감지이므로 제거 대상이 아님
+
+
+def test_remove_color_rejects_auto_detect_with_target_color(tmp_path):
+    arr = _solid((255, 37, 255), (4, 4))
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+    with pytest.raises(ValueError, match="동시"):
+        imageAlpha.remove_color(str(in_p), str(out_p),
+                                target_color=(255, 37, 255), auto_detect=True)
+
+
+def test_remove_color_rejects_auto_detect_with_target_colors(tmp_path):
+    arr = _solid((255, 37, 255), (4, 4))
+    in_p, out_p = tmp_path / "in.png", tmp_path / "out.png"
+    _save(arr, in_p)
+    with pytest.raises(ValueError, match="동시"):
+        imageAlpha.remove_color(str(in_p), str(out_p),
+                                target_colors=[(255, 37, 255)], auto_detect=True)
 
 
 def test_remove_color_decontaminate_uses_nearest_color(tmp_path):
@@ -517,6 +557,33 @@ def test_process_folder_propagates_target_colors(tmp_path):
     assert tuple(out[2, 2, :3]) == (80, 80, 80)
 
 
+def test_process_folder_propagates_auto_detect(tmp_path):
+    """배치 API 가 auto_detect 를 remove_color 까지 전달하는지 회귀 방지.
+
+    auto_detect=True 면 파일별 다색 자동 감지로 두 배경색이 모두 투명해진다.
+    auto_detect 가 전달되지 않으면 최빈색 1개만 빠져 둘째 색이 남는다.
+    """
+    in_dir, out_dir = tmp_path / "in", tmp_path / "out"
+    in_dir.mkdir()
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:5, :, :3] = [10, 20, 30]
+    arr[5:, :, :3] = [200, 100, 50]
+    arr[4:6, 4:6, :3] = [80, 80, 80]
+    _save(arr, in_dir / "a.png")
+
+    imageAlpha.process_folder(
+        str(in_dir), str(out_dir),
+        auto_detect=True,
+        tolerance=5, feather=0, decontaminate=False, edge_erosion=0,
+        max_workers=1,
+    )
+    out = np.array(Image.open(out_dir / "a.png"))
+    assert out[0, 0, 3] == 0           # 색 A 투명
+    assert out[9, 9, 3] == 0           # 색 B 투명
+    assert out[5, 5, 3] == 255         # 전경 보존
+
+
 def test_process_folder_propagates_trim_alpha_threshold(tmp_path):
     """배치 API 가 trim_alpha_threshold 를 remove_color 까지 전달하는지 회귀 방지.
 
@@ -659,6 +726,24 @@ def test_cli_auto_detects_background(tmp_path, monkeypatch):
     out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
     assert out[0, 0, 3] == 0      # 테두리 색은 자동 감지되어 투명
     assert out[5, 5, 3] == 255    # 전경 중앙 보존
+
+
+def test_cli_auto_detects_multiple_border_colors(tmp_path, monkeypatch):
+    """--auto 가 테두리의 여러 색을 모두 감지해 제거 — --auto→auto_detect 연동 회귀 방지."""
+    monkeypatch.chdir(tmp_path)
+    base = tmp_path / "base"
+    base.mkdir()
+    arr = np.zeros((10, 10, 4), dtype=np.uint8)
+    arr[..., 3] = 255
+    arr[:5, :, :3] = [10, 20, 30]
+    arr[5:, :, :3] = [200, 100, 50]
+    arr[4:6, 4:6, :3] = [0, 255, 0]
+    _save(arr, base / "a.png")
+    monkeypatch.setattr(sys, "argv", ["chromapeel-cli", "--auto"])
+    imageAlpha._run_cli()
+    out = np.array(Image.open(tmp_path / "alpha" / "a.png"))
+    assert out[0, 0, 3] == 0       # 테두리 색 A 투명
+    assert out[9, 9, 3] == 0       # 테두리 색 B 도 투명 (다색 자동 감지)
 
 
 def test_cli_rejects_target_color_with_auto(tmp_path, monkeypatch, capsys):

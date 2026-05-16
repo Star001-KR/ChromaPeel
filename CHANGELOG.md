@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   내림차순으로 색상을 모으되 `min_ratio` (기본 5%) 미만의 색은 제외하고, 최빈색
   1개는 비율과 무관하게 반드시 포함. 정렬은 (count desc, R asc, G asc, B asc)
   로 결정론적 tie-break — JS 포트와 byte-for-byte 일치.
+- `remove_color` / `process_folder` 의 `auto_detect` 플래그 — 색을 명시하지 않은
+  자동 감지에서 다색 감지(`detect_background_colors`)는 `auto_detect=True` (CLI
+  `--auto`, GUI "자동 감지") 로 명시 opt-in 해야 적용된다. 인자를 모두 생략한 기본
+  호출은 0.2.0 처럼 테두리 최빈색 1개만 단일 감지하므로, 기존 라이브러리 호출자의
+  동작이 보존된다.
 - CLI `--target-color "R,G,B"` (반복 지정 가능) + `--auto` 플래그.
 - Tkinter GUI 색상 영역에 다색 칩 리스트 + "+ 색상 추가" / 행별 "✕" 삭제 버튼.
 - Web 다색 UI — `colorsContainer` 가 색 picker 칩을 동적으로 렌더링하며,
