@@ -303,12 +303,18 @@ export async function addHistoryItem({ filename, blob }) {
         // Store failed — clear the marker so the save can be retried this
         // session. Leave it if a newer result claimed it in the meantime.
         if (lastSaved && lastSaved.blob === blob) lastSaved = null;
+        // The FIFO trim / quota eviction above may have already deleted cards
+        // (and revoked their object URLs); re-render so the UI drops those rows
+        // instead of leaving stale, broken-thumbnail cards behind.
+        await renderHistory();
         return;
       }
       const oldestId = await getOldestId();
       if (oldestId == null) {
         showToast('브라우저 저장 공간이 부족합니다. 결과를 다운로드 후 카드를 삭제해주세요.');
         if (lastSaved && lastSaved.blob === blob) lastSaved = null;
+        // Same as above — evictions already happened, so refresh the UI.
+        await renderHistory();
         return;
       }
       await deleteOne(oldestId);
